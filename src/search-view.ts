@@ -85,9 +85,10 @@ export class SemanticSearchView extends ItemView {
 
         // Add index current file button
         const indexButton = searchContainer.createEl('button', {
-            text: '📑 索引当前文件',
+            text: '📑',
             cls: 'index-current-button',
         });
+        indexButton.title = '索引当前文件';
         indexButton.addEventListener('click', async () => {
             console.log('Index button clicked!');
             try {
