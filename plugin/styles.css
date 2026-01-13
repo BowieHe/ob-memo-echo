@@ -1,0 +1,409 @@
+/* Semantic Search Plugin Styles */
+
+.semantic-search-view {
+    padding: 10px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.search-header {
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.search-header-title h4 {
+    margin: 0;
+    padding: 5px 0;
+    font-size: 16px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+/* Service Status Indicator */
+.status-indicator {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.status-indicator.connected {
+    color: var(--text-success);
+    background-color: var(--background-modifier-success);
+}
+
+.status-indicator.disconnected {
+    color: var(--text-error);
+    background-color: var(--background-modifier-error);
+}
+
+/* Search Input Container */
+.search-input-container {
+    margin-bottom: 10px;
+    display: flex;
+    gap: 8px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    transition: border-color 0.2s;
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    z-index: 2;
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Refresh Button */
+.refresh-button {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.refresh-button:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.refresh-button:active {
+    transform: scale(0.95);
+}
+
+/* Status Bar */
+.search-status {
+    padding: 5px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+/* Results Container */
+.search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Result Item */
+.result-item {
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.result-item:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+    transform: translateX(2px);
+}
+
+.result-item.clickable {
+    cursor: pointer;
+}
+
+/* Result Header */
+.result-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.result-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.result-path {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.result-score {
+    font-size: 12px;
+    color: var(--text-accent);
+    font-weight: 600;
+    background-color: var(--background-modifier-border);
+    padding: 2px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+
+/* Result Content */
+.result-content {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    margin-bottom: 8px;
+}
+
+/* Image Preview */
+.result-image-preview {
+    margin-top: 8px;
+    max-height: 150px;
+    overflow: hidden;
+    border-radius: 4px;
+}
+
+.result-image-preview img {
+    width: 100%;
+    height: auto;
+    max-height: 150px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+/* Empty State */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.empty-state-text {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* Error State */
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.error-state-text {
+    font-size: 14px;
+    color: var(--text-error);
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.error-state-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* Scrollbar */
+.search-results::-webkit-scrollbar {
+    width: 8px;
+}
+
+.search-results::-webkit-scrollbar-track {
+    background: var(--background-primary);
+}
+
+.search-results::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Settings Page Styles */
+.stats-container {
+	margin: 20px 0;
+	padding: 15px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-secondary);
+}
+
+.stats-display {
+	padding: 10px;
+}
+
+.stats-content {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.stat-item {
+	margin: 0;
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.error-text {
+	color: var(--text-error);
+	font-size: 13px;
+	margin: 0;
+}
+
+/* Indexing View Styles */
+.image-vector-indexing-view {
+	padding: 20px;
+}
+
+.indexing-header h4 {
+	margin: 0 0 15px 0;
+	color: var(--text-normal);
+}
+
+.file-info {
+	margin: 15px 0;
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+}
+
+.current-file {
+	font-weight: bold;
+	margin: 5px 0;
+}
+
+.file-path {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin: 5px 0;
+}
+
+.no-file {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.button-container {
+	margin: 15px 0;
+}
+
+.status-area {
+	margin: 15px 0;
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+}
+
+.status-text {
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.stats-area {
+	margin-top: 20px;
+	padding: 15px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.stats-area h5 {
+	margin: 0 0 10px 0;
+	color: var(--text-normal);
+}
+
+.stats-area p {
+	margin: 5px 0;
+	font-size: 14px;
+}
+
+/* Progress Area */
+.progress-area {
+	margin: 15px 0;
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.progress-bar {
+	width: 100%;
+	height: 20px;
+	background-color: var(--background-modifier-border);
+	border-radius: 10px;
+	overflow: hidden;
+	margin: 10px 0;
+}
+
+.progress-fill {
+	height: 100%;
+	background-color: var(--interactive-accent);
+	transition: width 0.3s ease;
+}
+
+.button-container button {
+	margin: 5px 5px 5px 0;
+}
+
+.button-container .mod-warning {
+	background-color: var(--color-orange);
+}
+
+.button-container .mod-warning:hover {
+	background-color: var(--color-red);
+}
+
+/* Fix for button click issues */
+.semantic-search-view button {
+	pointer-events: auto !important;
+	cursor: pointer !important;
+	position: relative !important;
+	z-index: 10 !important;
+}
+
+.index-current-button {
+	margin: 10px 0;
+	padding: 8px 16px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	pointer-events: auto !important;
+	z-index: 100 !important;
+}
+
+.index-current-button:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.index-current-button:active {
+	transform: scale(0.98);
+}

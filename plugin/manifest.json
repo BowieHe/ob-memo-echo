@@ -1,0 +1,10 @@
+{
+    "id": "obsidian-image-vector",
+    "name": "ob image vector",
+    "version": "0.1.0",
+    "minAppVersion": "0.15.0",
+    "description": "AI-powered semantic search for your notes using local embeddings",
+    "author": "Bowie",
+    "authorUrl": "",
+    "isDesktopOnly": false
+}
