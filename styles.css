@@ -42,10 +42,12 @@
 }
 
 /* Search Input Container */
+/* Search Input Container */
 .search-input-container {
     margin-bottom: 10px;
     display: flex;
     gap: 8px;
+    align-items: center;
 }
 
 .search-input {
@@ -82,6 +84,11 @@
     cursor: pointer;
     font-size: 14px;
     transition: all 0.2s;
+    height: 36px; /* Explicit height to match input */
+    width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .refresh-button:hover {
@@ -249,161 +256,167 @@
 
 /* Settings Page Styles */
 .stats-container {
-	margin: 20px 0;
-	padding: 15px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background-color: var(--background-secondary);
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-secondary);
 }
 
 .stats-display {
-	padding: 10px;
+    padding: 10px;
 }
 
 .stats-content {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .stat-item {
-	margin: 0;
-	font-size: 14px;
-	color: var(--text-normal);
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-normal);
 }
 
 .error-text {
-	color: var(--text-error);
-	font-size: 13px;
-	margin: 0;
+    color: var(--text-error);
+    font-size: 13px;
+    margin: 0;
 }
 
 /* Indexing View Styles */
 .image-vector-indexing-view {
-	padding: 20px;
+    padding: 20px;
 }
 
 .indexing-header h4 {
-	margin: 0 0 15px 0;
-	color: var(--text-normal);
+    margin: 0 0 15px 0;
+    color: var(--text-normal);
 }
 
 .file-info {
-	margin: 15px 0;
-	padding: 10px;
-	background-color: var(--background-secondary);
-	border-radius: 6px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
 }
 
 .current-file {
-	font-weight: bold;
-	margin: 5px 0;
+    font-weight: bold;
+    margin: 5px 0;
 }
 
 .file-path {
-	font-size: 12px;
-	color: var(--text-muted);
-	margin: 5px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 5px 0;
 }
 
 .no-file {
-	color: var(--text-muted);
-	font-style: italic;
+    color: var(--text-muted);
+    font-style: italic;
 }
 
 .button-container {
-	margin: 15px 0;
+    margin: 15px 0;
 }
 
 .status-area {
-	margin: 15px 0;
-	padding: 10px;
-	background-color: var(--background-secondary);
-	border-radius: 6px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
 }
 
 .status-text {
-	font-size: 14px;
-	color: var(--text-normal);
+    font-size: 14px;
+    color: var(--text-normal);
 }
 
 .stats-area {
-	margin-top: 20px;
-	padding: 15px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
 }
 
 .stats-area h5 {
-	margin: 0 0 10px 0;
-	color: var(--text-normal);
+    margin: 0 0 10px 0;
+    color: var(--text-normal);
 }
 
 .stats-area p {
-	margin: 5px 0;
-	font-size: 14px;
+    margin: 5px 0;
+    font-size: 14px;
 }
 
 /* Progress Area */
 .progress-area {
-	margin: 15px 0;
-	padding: 10px;
-	background-color: var(--background-secondary);
-	border-radius: 6px;
-	border-left: 3px solid var(--interactive-accent);
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
+    border-left: 3px solid var(--interactive-accent);
 }
 
 .progress-bar {
-	width: 100%;
-	height: 20px;
-	background-color: var(--background-modifier-border);
-	border-radius: 10px;
-	overflow: hidden;
-	margin: 10px 0;
+    width: 100%;
+    height: 20px;
+    background-color: var(--background-modifier-border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
 }
 
 .progress-fill {
-	height: 100%;
-	background-color: var(--interactive-accent);
-	transition: width 0.3s ease;
+    height: 100%;
+    background-color: var(--interactive-accent);
+    transition: width 0.3s ease;
 }
 
 .button-container button {
-	margin: 5px 5px 5px 0;
+    margin: 5px 5px 5px 0;
 }
 
 .button-container .mod-warning {
-	background-color: var(--color-orange);
+    background-color: var(--color-orange);
 }
 
 .button-container .mod-warning:hover {
-	background-color: var(--color-red);
+    background-color: var(--color-red);
 }
 
 /* Fix for button click issues */
 .semantic-search-view button {
-	pointer-events: auto !important;
-	cursor: pointer !important;
-	position: relative !important;
-	z-index: 10 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    position: relative !important;
+    z-index: 10 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .index-current-button {
-	margin: 10px 0;
-	padding: 8px 16px;
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	pointer-events: auto !important;
-	z-index: 100 !important;
+    margin: 0;
+    padding: 8px 12px; /* Match other buttons */
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 6px; /* Match others */
+    cursor: pointer;
+    pointer-events: auto !important;
+    z-index: 100 !important;
+    height: 36px; /* Match input */
+    width: 36px; /* Match refresh button if just icon */
+    font-size: 14px; /* Match others */
 }
 
 .index-current-button:hover {
-	background-color: var(--interactive-accent-hover);
+    background-color: var(--interactive-accent-hover);
 }
 
 .index-current-button:active {
-	transform: scale(0.98);
+    transform: scale(0.98);
 }

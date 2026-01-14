@@ -6,6 +6,7 @@
 import { SemanticSearchView } from '../search-view';
 import { EmbeddingService } from '../services/embedding-service';
 import { VectorStore } from '../services/vector-store';
+import { MetadataExtractor } from '../services/metadata-extractor';
 
 // Mock Obsidian API
 jest.mock('obsidian', () => ({
@@ -30,6 +31,7 @@ describe('SearchView', () => {
     let searchView: any;
     let mockEmbeddingService: jest.Mocked<EmbeddingService>;
     let mockVectorStore: jest.Mocked<VectorStore>;
+    let mockMetadataExtractor: jest.Mocked<MetadataExtractor>;
     let mockLeaf: any;
 
     beforeEach(() => {
@@ -46,6 +48,11 @@ describe('SearchView', () => {
             initialize: jest.fn(),
         } as any;
 
+        mockMetadataExtractor = {
+            extract: jest.fn(),
+            extractWithRules: jest.fn(),
+        } as any;
+
         mockLeaf = {
             view: null,
         };
@@ -54,7 +61,8 @@ describe('SearchView', () => {
         searchView = new SemanticSearchView(
             mockLeaf,
             mockEmbeddingService,
-            mockVectorStore
+            mockVectorStore,
+            mockMetadataExtractor
         );
     });
 

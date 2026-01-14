@@ -50,6 +50,4 @@ echo "3. 关闭 安全模式 (如果还没关闭)"
 echo "4. 刷新插件列表"
 echo "5. 启用 'Semantic Search' 插件"
 echo ""
-echo "🚀 启动 Rust 服务:"
-echo "   cd ../core && cargo run --release"
-echo ""
+

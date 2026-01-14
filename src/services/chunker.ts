@@ -15,6 +15,11 @@ export interface ChunkResult {
     index: number;
     startPos: number;
     endPos: number;
+
+    // v0.2.0: Enhanced metadata
+    start_line: number;      // 1-indexed line number where chunk starts
+    end_line: number;        // 1-indexed line number where chunk ends
+    header_path: string;     // Formatted header hierarchy (e.g., "# H1 > ## H2")
 }
 
 export interface ChunkerConfig {
@@ -100,6 +105,11 @@ export class Chunker {
 
             // Build header path
             const headerPath = this.buildHeaderPath(headers, i);
+            const headerPathStr = this.formatHeaderPath(headerPath);
+
+            // Calculate line numbers
+            const startLine = this.calculateLineNumber(content, header.position);
+            const endLine = this.calculateLineNumber(content, endPos);
 
             // If content is too long, split further
             if (chunkContent.length > this.maxChunkSize) {
@@ -110,12 +120,18 @@ export class Chunker {
                     const part = parts[j];
                     const end = pos + part.length;
 
+                    const partStartLine = this.calculateLineNumber(content, pos);
+                    const partEndLine = this.calculateLineNumber(content, end);
+
                     chunks.push({
                         content: part,
                         headers: headerPath,
                         index: chunks.length,
                         startPos: pos,
                         endPos: end,
+                        start_line: partStartLine,
+                        end_line: partEndLine,
+                        header_path: headerPathStr,
                     });
 
                     pos = end;
@@ -127,6 +143,9 @@ export class Chunker {
                     index: chunks.length,
                     startPos: header.position,
                     endPos: endPos,
+                    start_line: startLine,
+                    end_line: endLine,
+                    header_path: headerPathStr,
                 });
             }
         }
@@ -162,18 +181,47 @@ export class Chunker {
     }
 
     /**
+     * Calculate line number from byte position (v0.2.0)
+     */
+    private calculateLineNumber(content: string, position: number): number {
+        const upToPosition = content.slice(0, position);
+        const lines = upToPosition.split('\n');
+        return lines.length;
+    }
+
+    /**
+     * Format header path as string (v0.2.0)
+     * Example: [{ level: 1, text: "H1" }, { level: 2, text: "H2" }] => "# H1 > ## H2"
+     */
+    private formatHeaderPath(headers: Array<{ level: number; text: string }>): string {
+        if (!headers || headers.length === 0) {
+            return '';
+        }
+
+        return headers
+            .map(h => '#'.repeat(h.level) + ' ' + h.text)
+            .join(' > ');
+    }
+
+    /**
      * Chunk content without headers
      */
     private chunkWithoutHeaders(content: string): ChunkResult[] {
         const chunks: ChunkResult[] = [];
 
         if (content.length <= this.maxChunkSize) {
+            const startLine = 1;
+            const endLine = content.split('\n').length;
+
             chunks.push({
                 content,
                 headers: [],
                 index: 0,
                 startPos: 0,
                 endPos: content.length,
+                start_line: startLine,
+                end_line: endLine,
+                header_path: '',
             });
         } else {
             // Split long content
@@ -182,12 +230,18 @@ export class Chunker {
 
             for (const part of parts) {
                 const end = pos + part.length;
+                const startLine = this.calculateLineNumber(content, pos);
+                const endLine = this.calculateLineNumber(content, end);
+
                 chunks.push({
                     content: part,
                     headers: [],
                     index: chunks.length,
                     startPos: pos,
                     endPos: end,
+                    start_line: startLine,
+                    end_line: endLine,
+                    header_path: '',
                 });
                 pos = end;
             }

@@ -19,9 +19,9 @@ export interface ImageVectorSettings {
 }
 
 export const DEFAULT_SETTINGS: ImageVectorSettings = {
-    embeddingProvider: 'local',
+    embeddingProvider: 'ollama',
     ollamaUrl: 'http://localhost:11434',
-    ollamaModel: 'bge-m3',
+    ollamaModel: 'qwen3-embedding:4b',
     openaiApiKey: '',
     openaiModel: 'text-embedding-3-small',
     qdrantUrl: 'http://localhost:6333',
@@ -107,22 +107,44 @@ export class ImageVectorSettingTab extends PluginSettingTab {
 
         try {
             new Notice('🔄 正在索引文件...');
+            console.log(`\n========== 开始索引文件 ==========`);
+            console.log(`📄 文件: ${activeFile.path}`);
 
             // Read file content
             const content = await this.app.vault.read(activeFile);
+            console.log(`📝 文件长度: ${content.length} 字符`);
 
             // Chunk the content
+            console.log(`\n✂️ 开始分块...`);
             const chunks = this.plugin.chunker.chunk(content);
+            console.log(`✅ 分块完成: ${chunks.length} 个块`);
 
             if (chunks.length === 0) {
                 new Notice('⚠️ 文件内容为空');
+                console.log(`⚠️ 文件内容为空，跳过索引`);
                 return;
             }
 
+            // Log chunk details
+            chunks.forEach((chunk, idx) => {
+                console.log(`\n--- 块 ${idx + 1}/${chunks.length} ---`);
+                console.log(`  📍 位置: 行 ${chunk.start_line}-${chunk.end_line}`);
+                console.log(`  📏 长度: ${chunk.content.length} 字符`);
+                console.log(`  🏷️ 标题路径: ${chunk.header_path || '(无)'}`);
+                console.log(`  📖 内容预览: ${chunk.content.substring(0, 100)}...`);
+            });
+
             // Generate embeddings and store
+            console.log(`\n🤖 开始生成 Embedding...`);
             for (let i = 0; i < chunks.length; i++) {
                 const chunk = chunks[i];
+                console.log(`\n[${i + 1}/${chunks.length}] 处理块...`);
+
+                // Generate embedding
+                const startTime = Date.now();
                 const embedding = await this.plugin.embeddingService.embed(chunk.content);
+                const embedTime = Date.now() - startTime;
+                console.log(`  ✅ Embedding 生成完成 (${embedTime}ms, 维度: ${embedding.length})`);
 
                 await this.plugin.vectorStore.upsert({
                     id: `${activeFile.path}-chunk-${chunk.index}`,
@@ -138,8 +160,11 @@ export class ImageVectorSettingTab extends PluginSettingTab {
                         fileModified: activeFile.stat.mtime,
                     },
                 });
+                console.log(`  💾 已存储到 Qdrant`);
             }
 
+            console.log(`\n========== 索引完成 ==========`);
+            console.log(`✅ 成功索引 ${chunks.length} 个文本块\n`);
             new Notice(`✅ 成功索引 ${chunks.length} 个文本块`);
 
             // Refresh stats
@@ -350,8 +375,10 @@ export class ImageVectorSettingTab extends PluginSettingTab {
                 .addOption('local', '本地 (Transformers.js)')
                 .addOption('ollama', 'Ollama')
                 .addOption('openai', 'OpenAI')
-                .setValue('local')
+                .setValue(this.plugin.settings.embeddingProvider)
                 .onChange(async (value: 'local' | 'ollama' | 'openai') => {
+                    this.plugin.settings.embeddingProvider = value;
+                    await this.plugin.saveSettings();
                     this.plugin.embeddingService.updateConfig({ provider: value });
                     new Notice(`✅ 已切换到 ${value} 提供商`);
                 }));
@@ -362,20 +389,64 @@ export class ImageVectorSettingTab extends PluginSettingTab {
             .setDesc('Ollama 服务地址')
             .addText(text => text
                 .setPlaceholder('http://localhost:11434')
-                .setValue('http://localhost:11434')
+                .setValue(this.plugin.settings.ollamaUrl)
                 .onChange(async (value) => {
+                    this.plugin.settings.ollamaUrl = value;
+                    await this.plugin.saveSettings();
                     this.plugin.embeddingService.updateConfig({ ollamaUrl: value });
                 }));
 
-        new Setting(containerEl)
-            .setName('Ollama 模型')
-            .setDesc('使用的 Ollama 模型名称')
-            .addText(text => text
-                .setPlaceholder('bge-m3')
-                .setValue('bge-m3')
+        // Ollama model dropdown (dynamic)
+        const modelSetting = new Setting(containerEl)
+            .setName('Ollama Embedding 模型')
+            .setDesc('从 Ollama 加载的模型列表');
+
+        // Add dropdown
+        modelSetting.addDropdown(async (dropdown) => {
+            // Try to fetch models from Ollama
+            try {
+                const response = await fetch(`${this.plugin.settings.ollamaUrl}/api/tags`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const models = data.models || [];
+
+                    // Filter embedding models (models with 'embed' in name)
+                    const embeddingModels = models.filter((m: any) =>
+                        m.name.toLowerCase().includes('embed') ||
+                        m.name.toLowerCase().includes('bge') ||
+                        m.name.toLowerCase().includes('qwen')
+                    );
+
+                    if (embeddingModels.length > 0) {
+                        embeddingModels.forEach((model: any) => {
+                            dropdown.addOption(model.name, model.name);
+                        });
+                    } else {
+                        dropdown.addOption('', '(未找到 embedding 模型)');
+                    }
+                } else {
+                    dropdown.addOption('', '(无法连接 Ollama)');
+                }
+            } catch (error) {
+                dropdown.addOption('', '(Ollama 未运行)');
+            }
+
+            dropdown
+                .setValue(this.plugin.settings.ollamaModel)
                 .onChange(async (value) => {
+                    this.plugin.settings.ollamaModel = value;
+                    await this.plugin.saveSettings();
                     this.plugin.embeddingService.updateConfig({ ollamaModel: value });
-                }));
+                    new Notice(`✅ 已切换到模型: ${value}`);
+                });
+        });
+
+        // Add refresh button
+        modelSetting.addButton(button => button
+            .setButtonText('刷新模型列表')
+            .onClick(() => {
+                this.display(); // Refresh the entire settings page
+            }));
 
         // OpenAI settings
         new Setting(containerEl)
@@ -383,8 +454,10 @@ export class ImageVectorSettingTab extends PluginSettingTab {
             .setDesc('你的 OpenAI API 密钥')
             .addText(text => text
                 .setPlaceholder('sk-...')
-                .setValue('')
+                .setValue(this.plugin.settings.openaiApiKey)
                 .onChange(async (value) => {
+                    this.plugin.settings.openaiApiKey = value;
+                    await this.plugin.saveSettings();
                     this.plugin.embeddingService.updateConfig({ openaiApiKey: value });
                 }));
     }

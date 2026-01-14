@@ -12,5 +12,6 @@ module.exports = {
     // Mock @xenova/transformers for faster tests
     moduleNameMapper: {
         '^@xenova/transformers$': '<rootDir>/src/__mocks__/transformers.ts',
+        '^obsidian$': '<rootDir>/src/__mocks__/obsidian.ts',
     },
 };

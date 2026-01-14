@@ -6,12 +6,14 @@
 import { ItemView, WorkspaceLeaf, TFile, MarkdownView, Notice } from 'obsidian';
 import { EmbeddingService } from './services/embedding-service';
 import { VectorStore, SearchResult as VectorSearchResult } from './services/vector-store';
+import { MetadataExtractor } from './services/metadata-extractor';
 
 export const VIEW_TYPE_SEMANTIC_SEARCH = 'semantic-search-view';
 
 export class SemanticSearchView extends ItemView {
     private embeddingService: EmbeddingService;
     private vectorStore: VectorStore;
+    private metadataExtractor: MetadataExtractor;
     private searchInput: HTMLInputElement;
     private resultsContainer: HTMLElement;
     private statusBar: HTMLElement;
@@ -23,11 +25,13 @@ export class SemanticSearchView extends ItemView {
     constructor(
         leaf: WorkspaceLeaf,
         embeddingService: EmbeddingService,
-        vectorStore: VectorStore
+        vectorStore: VectorStore,
+        metadataExtractor: MetadataExtractor
     ) {
         super(leaf);
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
+        this.metadataExtractor = metadataExtractor;
     }
 
     getViewType(): string {
@@ -195,22 +199,71 @@ export class SemanticSearchView extends ItemView {
             const scoreEl = resultHeader.createSpan('result-score');
             scoreEl.textContent = `${(result.score * 100).toFixed(1)}%`;
 
-            // Headers (if available)
-            if (result.metadata.headers && result.metadata.headers.length > 0) {
-                const headersEl = resultItem.createDiv('result-headers');
+            // v0.2.0: Line numbers (if available)
+            if (result.metadata.start_line && result.metadata.end_line) {
+                const lineNumbersEl = resultItem.createDiv('result-line-numbers');
+                lineNumbersEl.textContent = `📍 行 ${result.metadata.start_line}-${result.metadata.end_line}`;
+            }
+
+            // v0.2.0: Header path (if available)
+            if (result.metadata.header_path) {
+                const headerPathEl = resultItem.createDiv('result-header-path');
+                headerPathEl.textContent = `${result.metadata.header_path}`;
+            } else if (result.metadata.headers && result.metadata.headers.length > 0) {
+                // Fallback to old format
+                const headersEl = resultItem.createDiv('result-header-path');
                 const headerPath = result.metadata.headers
                     .map((h: any) => h.text)
                     .join(' > ');
-                headersEl.textContent = `📍 ${headerPath}`;
+                headersEl.textContent = `${headerPath}`;
+            }
+
+            // v0.2.0: Summary (if available)
+            if (result.metadata.summary) {
+                const summaryEl = resultItem.createDiv('result-summary');
+                summaryEl.textContent = `💡 ${result.metadata.summary}`;
             }
 
             // Content preview
             const contentEl = resultItem.createDiv('result-content');
             contentEl.textContent = this.truncateContent(result.metadata.content || '', 100);
 
-            // Click to open
+            // v0.2.0: Tags (if available)
+            if (result.metadata.tags && result.metadata.tags.length > 0) {
+                const tagsContainer = resultItem.createDiv('result-tags');
+                result.metadata.tags.forEach((tag: string) => {
+                    const tagEl = tagsContainer.createSpan('result-tag');
+                    tagEl.textContent = tag;
+                });
+            }
+
+            // Action buttons container
+            const actionsEl = resultItem.createDiv('result-actions');
+
+            // v0.2.0: Copy link button
+            const copyButton = actionsEl.createEl('button', {
+                text: '🔗',
+                cls: 'copy-link-button',
+            });
+            copyButton.title = '复制段落链接';
+            copyButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent opening file
+                this.copyParagraphLink(
+                    result.metadata.filePath,
+                    result.metadata.header_path || ''
+                );
+            });
+
+            // Click to open with precise jump
             resultItem.addEventListener('click', () => {
-                this.openFile(result.metadata.filePath, result.metadata.startPos);
+                if (result.metadata.start_line) {
+                    this.jumpToLine(
+                        result.metadata.filePath,
+                        result.metadata.start_line
+                    );
+                } else {
+                    this.openFile(result.metadata.filePath, result.metadata.startPos);
+                }
             });
 
             // Add hover effect
@@ -234,12 +287,82 @@ export class SemanticSearchView extends ItemView {
         }
     }
 
+    /**
+     * v0.2.0: Jump to specific line number with highlighting
+     */
+    async jumpToLine(filePath: string, lineNumber: number) {
+        try {
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (file instanceof TFile) {
+                const leaf = this.app.workspace.getLeaf(false);
+                await leaf.openFile(file);
+
+                // Get the active editor
+                const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                if (view) {
+                    const editor = view.editor;
+
+                    // Set cursor to line (convert to 0-indexed)
+                    const line = lineNumber - 1;
+                    editor.setCursor({ line, ch: 0 });
+
+                    // Scroll into view
+                    editor.scrollIntoView(
+                        { from: { line, ch: 0 }, to: { line: line + 1, ch: 0 } },
+                        true
+                    );
+
+                    // TODO: Add highlighting for 2 seconds
+                    // This would require using CodeMirror decorations
+                }
+            }
+        } catch (error) {
+            new Notice(`无法跳转到行 ${lineNumber}`);
+            console.error('Error jumping to line:', error);
+        }
+    }
+
+    /**
+     * v0.2.0: Copy paragraph link to clipboard
+     */
+    async copyParagraphLink(filePath: string, headerPath: string) {
+        try {
+            // Extract filename from path
+            const fileName = filePath.split('/').pop() || filePath;
+
+            // Format header path for Obsidian link
+            // Convert "# H1 > ## H2" to "H1 > H2"
+            const cleanHeaderPath = headerPath
+                .replace(/#+\s*/g, '')
+                .trim();
+
+            // Create Obsidian link format: [[filename#header]]
+            const link = cleanHeaderPath
+                ? `[[${fileName}#${cleanHeaderPath}]]`
+                : `[[${fileName}]]`;
+
+            await navigator.clipboard.writeText(link);
+            new Notice('✅ 已复制段落链接');
+        } catch (error) {
+            new Notice('❌ 复制失败');
+            console.error('Error copying link:', error);
+        }
+    }
+
     formatResult(result: VectorSearchResult) {
         return {
             path: result.metadata.filePath || result.id,
             score: `${Math.round(result.score * 100)}%`,
             preview: this.truncateContent(result.metadata.content || '', 100),
             headers: result.metadata.headers || [],
+            // v0.2.0 fields
+            lineRange: result.metadata.start_line && result.metadata.end_line
+                ? `${result.metadata.start_line}-${result.metadata.end_line}`
+                : undefined,
+            headerPath: result.metadata.header_path,
+            summary: result.metadata.summary,
+            tags: result.metadata.tags,
+            category: result.metadata.category,
         };
     }
 
@@ -388,8 +511,24 @@ export class SemanticSearchView extends ItemView {
             for (let i = 0; i < chunks.length; i++) {
                 console.log(`Processing chunk ${i + 1}/${chunks.length}`);
                 const chunk = chunks[i];
+
+                // Generate embedding
                 const embedding = await this.embeddingService.embed(chunk.content);
                 console.log('Embedding generated, dimension:', embedding.length);
+
+                // v0.2.0: Extract metadata using AI/rules
+                let extractedMetadata;
+                try {
+                    extractedMetadata = await this.metadataExtractor.extract(chunk.content);
+                    console.log('Metadata extracted:', extractedMetadata);
+                } catch (error) {
+                    console.warn('Metadata extraction failed, using defaults:', error);
+                    extractedMetadata = {
+                        summary: '',
+                        tags: [],
+                        category: '技术笔记',
+                    };
+                }
 
                 await this.vectorStore.upsert({
                     id: `${activeFile.path}-chunk-${chunk.index}`,
@@ -401,6 +540,15 @@ export class SemanticSearchView extends ItemView {
                         headers: chunk.headers,
                         startPos: chunk.startPos,
                         endPos: chunk.endPos,
+                        // v0.2.0: Enhanced metadata
+                        start_line: chunk.start_line,
+                        end_line: chunk.end_line,
+                        header_path: chunk.header_path,
+                        // v0.2.0: AI-extracted metadata
+                        summary: extractedMetadata.summary,
+                        tags: extractedMetadata.tags,
+                        category: extractedMetadata.category,
+                        word_count: chunk.content.length,
                         indexedAt: Date.now(),
                         fileModified: activeFile.stat.mtime,
                     },

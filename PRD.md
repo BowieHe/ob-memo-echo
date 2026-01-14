@@ -1,31 +1,56 @@
-# Obsidian 语义搜索插件 (TypeScript) - PRD
+# Obsidian 语义搜索插件 - PRD
 
 ## 1. 项目概述
 
-本项目是 Obsidian 的 TypeScript 插件部分,作为用户界面层,负责与 Rust 后端服务通信,为用户提供语义搜索功能。插件将在 Obsidian 的右侧边栏提供搜索界面。
+本项目是一个纯 TypeScript 实现的 Obsidian 插件，提供基于语义的笔记搜索功能。插件使用 Qdrant 向量数据库存储文档嵌入向量，支持 Ollama、OpenAI 或本地 Transformers.js 生成嵌入。
 
-## 2. 核心职责
+**核心特性**：
 
-根据整体架构设计,TypeScript 插件的职责包括:
+-   🔍 语义搜索：基于内容含义而非关键词的智能搜索
+-   📑 智能分块：按 Markdown 标题层级分块，保留上下文
+-   🔄 增量同步：只索引新文件和已修改的文件
+-   🎨 原生集成：完全集成到 Obsidian 界面，支持主题适配
+-   📦 跨平台：纯 TypeScript 实现，无二进制依赖
 
-### 2.1 UI 层
+## 2. 架构设计
 
--   ✅ 在右侧边栏显示搜索视图
--   ✅ 提供搜索框输入界面
--   ✅ 展示搜索结果列表
--   ✅ 支持点击结果跳转到对应文件
+### 2.1 技术栈
 
-### 2.2 与 Rust 服务通信
+-   **语言**: TypeScript
+-   **框架**: Obsidian Plugin API
+-   **构建工具**: esbuild
+-   **向量数据库**: Qdrant (Docker 或本地部署)
+-   **嵌入服务**:
+    -   Ollama (推荐，本地运行)
+    -   OpenAI API (云端)
+    -   Transformers.js (浏览器内运行，实验性)
 
--   ✅ 调用 `/api/search` 进行语义搜索
--   ⏸️ 调用 `/api/index` 索引笔记 (后续版本)
--   ✅ 调用 `/api/health` 检查服务状态
+### 2.2 核心模块
 
-### 2.3 Obsidian 集成
+```
+src/
+├── main.ts                      # 插件入口
+├── search-view.ts               # 搜索界面
+├── settings.ts                  # 设置页面
+└── services/
+    ├── embedding-service.ts     # 嵌入服务抽象层
+    ├── vector-store.ts          # Qdrant 客户端
+    └── chunker.ts               # Markdown 分块器
+```
 
--   ⏸️ Vault 文件扫描与索引 (后续版本)
--   ⏸️ 监听文件变化,增量更新 (后续版本)
--   ⏸️ Markdown 解析,提取图片上下文 (后续版本)
+### 2.3 数据流
+
+```
+用户输入查询
+    ↓
+EmbeddingService 生成查询向量
+    ↓
+VectorStore 在 Qdrant 中搜索
+    ↓
+返回相似文档块
+    ↓
+SearchView 展示结果
+```
 
 ## 3. MVP (最小可行产品) 功能范围
 
