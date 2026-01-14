@@ -18,7 +18,7 @@ if [ -z "$1" ]; then
 fi
 
 VAULT_PATH="$1"
-PLUGIN_NAME="obsidian-image-vector"
+PLUGIN_NAME="memo-echo"
 PLUGIN_DIR="$VAULT_PATH/.obsidian/plugins/$PLUGIN_NAME"
 
 # 检查 vault 是否存在

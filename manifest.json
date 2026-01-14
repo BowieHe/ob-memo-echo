@@ -1,9 +1,9 @@
 {
-    "id": "obsidian-image-vector",
-    "name": "ob image vector",
-    "version": "0.1.0",
+    "id": "memo-echo",
+    "name": "Memo Echo",
+    "version": "0.2.0",
     "minAppVersion": "0.15.0",
-    "description": "AI-powered semantic search for your notes using local embeddings",
+    "description": "Your AI Knowledge Assistant. Automatically connects your thoughts and recalls relevant memories (notes) using vector search.",
     "author": "Bowie",
     "authorUrl": "",
     "isDesktopOnly": false

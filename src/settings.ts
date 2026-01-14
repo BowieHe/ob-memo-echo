@@ -3,9 +3,9 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
-import type ImageVectorPlugin from './main';
+import type MemoEchoPlugin from './main';
 
-export interface ImageVectorSettings {
+export interface MemoEchoSettings {
     // Embedding settings
     embeddingProvider: 'local' | 'ollama' | 'openai';
     ollamaUrl: string;       // Used for Ollama Embedding
@@ -25,7 +25,7 @@ export interface ImageVectorSettings {
     qdrantCollection: string;
 }
 
-export const DEFAULT_SETTINGS: ImageVectorSettings = {
+export const DEFAULT_SETTINGS: MemoEchoSettings = {
     embeddingProvider: 'ollama',
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'qwen3-embedding:4b',
@@ -42,11 +42,11 @@ export const DEFAULT_SETTINGS: ImageVectorSettings = {
     qdrantCollection: 'obsidian_notes',
 };
 
-export class ImageVectorSettingTab extends PluginSettingTab {
-    plugin: ImageVectorPlugin;
+export class MemoEchoSettingTab extends PluginSettingTab {
+    plugin: MemoEchoPlugin;
     private isIndexing = false;
 
-    constructor(app: App, plugin: ImageVectorPlugin) {
+    constructor(app: App, plugin: MemoEchoPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }

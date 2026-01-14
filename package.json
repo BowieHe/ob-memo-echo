@@ -1,7 +1,7 @@
 {
-    "name": "obsidian-semantic-search",
-    "version": "0.1.0",
-    "description": "Obsidian plugin for semantic search using Rust backend",
+    "name": "memo-echo",
+    "version": "0.2.0",
+    "description": "Memo Echo - AI Knowledge Assistant for Obsidian",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",

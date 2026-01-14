@@ -1,7 +1,7 @@
 import { Plugin, MarkdownView } from 'obsidian';
 import { SemanticSearchView, VIEW_TYPE_SEMANTIC_SEARCH } from './search-view';
 import { RecommendationView, VIEW_TYPE_RECOMMENDATION } from './recommendation-view';
-import { ImageVectorSettingTab, ImageVectorSettings, DEFAULT_SETTINGS } from './settings';
+import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
 import { VectorStore } from './services/vector-store';
 import { Chunker } from './services/chunker';
@@ -9,12 +9,12 @@ import { MetadataExtractor } from './services/metadata-extractor';
 import { VectorIndexManager } from './services/vector-index-manager';
 import { ParagraphDetector } from './services/paragraph-detector';
 
-export default class ImageVectorPlugin extends Plugin {
+export default class MemoEchoPlugin extends Plugin {
     private searchView: SemanticSearchView | null = null;
     private recommendationView: RecommendationView | null = null;
 
     // Settings
-    settings: ImageVectorSettings;
+    settings: MemoEchoSettings;
 
     // Services
     embeddingService: EmbeddingService;
@@ -25,7 +25,7 @@ export default class ImageVectorPlugin extends Plugin {
     paragraphDetector: ParagraphDetector | null = null;
 
     async onload() {
-        console.log('Loading Image Vector Plugin v0.2.0');
+        console.log('Loading Memo Echo Plugin v0.2.0');
 
         // Load settings
         await this.loadSettings();
@@ -132,11 +132,11 @@ export default class ImageVectorPlugin extends Plugin {
         this.setupParagraphDetector();
 
         // Add settings tab
-        this.addSettingTab(new ImageVectorSettingTab(this.app, this));
+        this.addSettingTab(new MemoEchoSettingTab(this.app, this));
     }
 
     async onunload() {
-        console.log('Unloading Image Vector Plugin');
+        console.log('Unloading Memo Echo Plugin');
 
         // Cleanup
         if (this.paragraphDetector) {

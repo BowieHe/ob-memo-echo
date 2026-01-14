@@ -50,7 +50,7 @@ if [ ! -d "$VAULT_PATH" ]; then
     exit 1
 fi
 
-PLUGIN_NAME="obsidian-image-vector"
+PLUGIN_NAME="memo-echo"
 PLUGIN_DIR="$VAULT_PATH/.obsidian/plugins/$PLUGIN_NAME"
 
 # 创建 .obsidian/plugins 目录
