@@ -8,10 +8,17 @@ import type ImageVectorPlugin from './main';
 export interface ImageVectorSettings {
     // Embedding settings
     embeddingProvider: 'local' | 'ollama' | 'openai';
-    ollamaUrl: string;
-    ollamaModel: string;
-    openaiApiKey: string;
-    openaiModel: string;
+    ollamaUrl: string;       // Used for Ollama Embedding
+    ollamaModel: string;     // Embedding model
+    openaiApiKey: string;    // Used for OpenAI Embedding
+    openaiModel: string;     // Embedding model
+
+    // AI Generation settings (Metadata Extraction)
+    enableAiMetadata: boolean;
+    aiGenProvider: 'ollama' | 'openai';
+    aiGenUrl: string;        // Dedicated URL for generation
+    aiGenModel: string;      // Generation/Chat model
+    aiGenApiKey: string;     // Dedicated API key for generation
 
     // Qdrant settings
     qdrantUrl: string;
@@ -24,6 +31,13 @@ export const DEFAULT_SETTINGS: ImageVectorSettings = {
     ollamaModel: 'qwen3-embedding:4b',
     openaiApiKey: '',
     openaiModel: 'text-embedding-3-small',
+
+    enableAiMetadata: true,
+    aiGenProvider: 'ollama',
+    aiGenUrl: 'http://localhost:11434',
+    aiGenModel: 'qwen2.5:7b',
+    aiGenApiKey: '',
+
     qdrantUrl: 'http://localhost:6333',
     qdrantCollection: 'obsidian_notes',
 };
@@ -51,6 +65,9 @@ export class ImageVectorSettingTab extends PluginSettingTab {
 
         // Embedding Provider Section
         this.addEmbeddingSection(containerEl);
+
+        // AI Generation Section (NEW!)
+        this.addAiGenerationSection(containerEl);
 
         // Qdrant Section
         this.addQdrantSection(containerEl);
@@ -365,7 +382,7 @@ export class ImageVectorSettingTab extends PluginSettingTab {
     }
 
     private addEmbeddingSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '🤖 Embedding 设置' });
+        containerEl.createEl('h3', { text: '🤖 Embedding 模型设置 (搜索)' });
 
         // Provider selection
         new Setting(containerEl)
@@ -380,86 +397,250 @@ export class ImageVectorSettingTab extends PluginSettingTab {
                     this.plugin.settings.embeddingProvider = value;
                     await this.plugin.saveSettings();
                     this.plugin.embeddingService.updateConfig({ provider: value });
+                    // Refresh to show/hide relevant fields
+                    this.display();
                     new Notice(`✅ 已切换到 ${value} 提供商`);
                 }));
 
-        // Ollama settings
-        new Setting(containerEl)
-            .setName('Ollama URL')
-            .setDesc('Ollama 服务地址')
-            .addText(text => text
-                .setPlaceholder('http://localhost:11434')
-                .setValue(this.plugin.settings.ollamaUrl)
-                .onChange(async (value) => {
-                    this.plugin.settings.ollamaUrl = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.embeddingService.updateConfig({ ollamaUrl: value });
-                }));
+        if (this.plugin.settings.embeddingProvider === 'ollama') {
+            // Ollama settings
+            new Setting(containerEl)
+                .setName('Ollama URL')
+                .setDesc('Ollama 服务地址')
+                .addText(text => text
+                    .setPlaceholder('http://localhost:11434')
+                    .setValue(this.plugin.settings.ollamaUrl)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaUrl = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.embeddingService.updateConfig({ ollamaUrl: value });
+                    }));
 
-        // Ollama model dropdown (dynamic)
-        const modelSetting = new Setting(containerEl)
-            .setName('Ollama Embedding 模型')
-            .setDesc('从 Ollama 加载的模型列表');
+            // Ollama Embedding Model dropdown
+            const embedModelSetting = new Setting(containerEl)
+                .setName('Ollama Embedding 模型')
+                .setDesc('用于生成向量的模型 (必须是 Embedding 模型!)');
 
-        // Add dropdown
-        modelSetting.addDropdown(async (dropdown) => {
-            // Try to fetch models from Ollama
-            try {
-                const response = await fetch(`${this.plugin.settings.ollamaUrl}/api/tags`);
-                if (response.ok) {
-                    const data = await response.json();
-                    const models = data.models || [];
+            embedModelSetting.addDropdown(async (dropdown) => {
+                try {
+                    const response = await fetch(`${this.plugin.settings.ollamaUrl}/api/tags`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        const models = data.models || [];
+                        const embedModels = models.filter((m: any) =>
+                            m.name.toLowerCase().includes('embed') ||
+                            m.name.toLowerCase().includes('bge')
+                        );
 
-                    // Filter embedding models (models with 'embed' in name)
-                    const embeddingModels = models.filter((m: any) =>
-                        m.name.toLowerCase().includes('embed') ||
-                        m.name.toLowerCase().includes('bge') ||
-                        m.name.toLowerCase().includes('qwen')
-                    );
-
-                    if (embeddingModels.length > 0) {
-                        embeddingModels.forEach((model: any) => {
-                            dropdown.addOption(model.name, model.name);
-                        });
+                        if (embedModels.length > 0) {
+                            embedModels.forEach((model: any) => dropdown.addOption(model.name, model.name));
+                        } else {
+                            dropdown.addOption('', '(未找到 embedding 模型)');
+                            if (this.plugin.settings.ollamaModel) {
+                                dropdown.addOption(this.plugin.settings.ollamaModel, this.plugin.settings.ollamaModel);
+                            }
+                        }
                     } else {
-                        dropdown.addOption('', '(未找到 embedding 模型)');
+                        dropdown.addOption('', '(无法连接 Ollama)');
                     }
-                } else {
-                    dropdown.addOption('', '(无法连接 Ollama)');
+                } catch (error) {
+                    dropdown.addOption('', '(Ollama 未运行)');
                 }
-            } catch (error) {
-                dropdown.addOption('', '(Ollama 未运行)');
-            }
 
-            dropdown
-                .setValue(this.plugin.settings.ollamaModel)
-                .onChange(async (value) => {
-                    this.plugin.settings.ollamaModel = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.embeddingService.updateConfig({ ollamaModel: value });
-                    new Notice(`✅ 已切换到模型: ${value}`);
-                });
-        });
+                dropdown
+                    .setValue(this.plugin.settings.ollamaModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaModel = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.embeddingService.updateConfig({ ollamaModel: value });
+                    });
+            });
 
-        // Add refresh button
-        modelSetting.addButton(button => button
-            .setButtonText('刷新模型列表')
-            .onClick(() => {
-                this.display(); // Refresh the entire settings page
-            }));
-
-        // OpenAI settings
-        new Setting(containerEl)
-            .setName('OpenAI API Key')
-            .setDesc('你的 OpenAI API 密钥')
-            .addText(text => text
-                .setPlaceholder('sk-...')
-                .setValue(this.plugin.settings.openaiApiKey)
-                .onChange(async (value) => {
-                    this.plugin.settings.openaiApiKey = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.embeddingService.updateConfig({ openaiApiKey: value });
+            // Add refresh button to refetch models
+            embedModelSetting.addButton(button => button
+                .setButtonText('刷新列表')
+                .setTooltip('刷新模型列表')
+                .onClick(() => {
+                    this.display();
                 }));
+        }
+
+        if (this.plugin.settings.embeddingProvider === 'openai') {
+            // OpenAI settings
+            new Setting(containerEl)
+                .setName('OpenAI API Key')
+                .setDesc('你的 OpenAI API 密钥')
+                .addText(text => text
+                    .setPlaceholder('sk-...')
+                    .setValue(this.plugin.settings.openaiApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openaiApiKey = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.embeddingService.updateConfig({ openaiApiKey: value });
+                    }));
+
+            new Setting(containerEl)
+                .setName('OpenAI Embedding 模型')
+                .addText(text => text
+                    .setPlaceholder('text-embedding-3-small')
+                    .setValue(this.plugin.settings.openaiModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openaiModel = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.embeddingService.updateConfig({ openaiModel: value });
+                    }));
+        }
+    }
+
+    private addAiGenerationSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '📝 AI 智能提取设置 (总结/标签)' });
+
+        // Toggle
+        new Setting(containerEl)
+            .setName('启用 AI 智能提取')
+            .setDesc('使用 LLM 模型自动生成文档总结、分类和标签。关闭将使用基于规则的快速提取。')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableAiMetadata)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableAiMetadata = value;
+                    await this.plugin.saveSettings();
+                    if (this.plugin.metadataExtractor) {
+                        this.plugin.metadataExtractor.updateConfig({ enableAi: value });
+                    }
+                    // Refresh to show/hide detailed settings
+                    this.display();
+                }));
+
+        if (!this.plugin.settings.enableAiMetadata) {
+            return;
+        }
+
+        // Provider selection
+        new Setting(containerEl)
+            .setName('AI 提取提供商')
+            .setDesc('选择用于生成总结的 AI 服务 (可与 Embedding 不同)')
+            .addDropdown(dropdown => dropdown
+                .addOption('ollama', 'Ollama (本地)')
+                .addOption('openai', 'OpenAI (在线)')
+                .setValue(this.plugin.settings.aiGenProvider)
+                .onChange(async (value: 'ollama' | 'openai') => {
+                    this.plugin.settings.aiGenProvider = value;
+                    await this.plugin.saveSettings();
+                    if (this.plugin.metadataExtractor) {
+                        this.plugin.metadataExtractor.updateConfig({ provider: value });
+                    }
+                    this.display();
+                }));
+
+        // Ollama Generation Settings
+        if (this.plugin.settings.aiGenProvider === 'ollama') {
+            new Setting(containerEl)
+                .setName('Ollama API URL')
+                .setDesc('Ollama 服务地址 (独立配置)')
+                .addText(text => text
+                    .setPlaceholder('http://localhost:11434')
+                    .setValue(this.plugin.settings.aiGenUrl)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiGenUrl = value;
+                        await this.plugin.saveSettings();
+                        if (this.plugin.metadataExtractor) {
+                            this.plugin.metadataExtractor.updateConfig({ ollamaUrl: value });
+                        }
+                        // We might want to refresh to reload models list if URL changed, 
+                        // but let's leave it for manual refresh or next open to avoid flicker text input
+                    }));
+
+            const genModelSetting = new Setting(containerEl)
+                .setName('Ollama 生成模型')
+                .setDesc('用于提取元数据的对话模型 (切勿选择 Embedding 模型)');
+
+            genModelSetting.addDropdown(async (dropdown) => {
+                try {
+                    const response = await fetch(`${this.plugin.settings.aiGenUrl}/api/tags`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        const models = data.models || [];
+                        // Filter likely generation models (exclude explicit embedding models)
+                        const genModels = models.filter((m: any) =>
+                            !m.name.toLowerCase().includes('embed') &&
+                            !m.name.toLowerCase().includes('bge')
+                        );
+
+                        if (genModels.length > 0) {
+                            genModels.forEach((model: any) => dropdown.addOption(model.name, model.name));
+                        } else {
+                            dropdown.addOption('', '(未找到生成模型)');
+                            if (this.plugin.settings.aiGenModel) {
+                                dropdown.addOption(this.plugin.settings.aiGenModel, this.plugin.settings.aiGenModel);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    dropdown.addOption('', '(Ollama 未运行)');
+                }
+
+                dropdown
+                    .setValue(this.plugin.settings.aiGenModel)
+                    .onChange(async (value) => {
+                        if (value.toLowerCase().includes('embed')) {
+                            new Notice('⚠️ 警告: 选择 Embedding 模型可能导致失败');
+                        }
+                        this.plugin.settings.aiGenModel = value;
+                        await this.plugin.saveSettings();
+                        if (this.plugin.metadataExtractor) {
+                            this.plugin.metadataExtractor.updateConfig({ ollamaModel: value });
+                        }
+                    });
+            });
+
+            genModelSetting.addButton(button => button
+                .setButtonText('刷新列表')
+                .onClick(() => this.display()));
+        }
+
+        // OpenAI Generation Settings
+        if (this.plugin.settings.aiGenProvider === 'openai') {
+            new Setting(containerEl)
+                .setName('OpenAI API Key')
+                .setDesc('用于总结的 API Key (如果不填则可能共用某个Key, 建议单独填)')
+                .addText(text => text
+                    .setPlaceholder('sk-...')
+                    .setValue(this.plugin.settings.aiGenApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiGenApiKey = value;
+                        await this.plugin.saveSettings();
+                        if (this.plugin.metadataExtractor) {
+                            this.plugin.metadataExtractor.updateConfig({ openaiApiKey: value });
+                        }
+                    }));
+
+            new Setting(containerEl)
+                .setName('OpenAI URL (Base URL)')
+                .setDesc('兼容 OpenAI 格式的 API 地址 (如 https://api.deepseek.com/v1)')
+                .addText(text => text
+                    .setPlaceholder('https://api.openai.com/v1')
+                    .setValue(this.plugin.settings.aiGenUrl)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiGenUrl = value;
+                        await this.plugin.saveSettings();
+                        if (this.plugin.metadataExtractor) {
+                            this.plugin.metadataExtractor.updateConfig({ openaiUrl: value });
+                        }
+                    }));
+
+            new Setting(containerEl)
+                .setName('模型名称')
+                .setDesc('例如: gpt-3.5-turbo, deepseek-chat')
+                .addText(text => text
+                    .setValue(this.plugin.settings.aiGenModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiGenModel = value;
+                        await this.plugin.saveSettings();
+                        if (this.plugin.metadataExtractor) {
+                            this.plugin.metadataExtractor.updateConfig({ openaiModel: value });
+                        }
+                    }));
+        }
     }
 
     private addQdrantSection(containerEl: HTMLElement): void {

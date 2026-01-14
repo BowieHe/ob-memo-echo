@@ -12,7 +12,10 @@ describe('MetadataExtractor (v0.2.0)', () => {
     let extractor: MetadataExtractor;
 
     beforeEach(() => {
-        extractor = new MetadataExtractor('http://localhost:11434', 'llama3.2:3b');
+        extractor = new MetadataExtractor({
+            ollamaUrl: 'http://localhost:11434',
+            ollamaModel: 'llama3.2:3b'
+        });
         jest.clearAllMocks();
     });
 
@@ -240,7 +243,10 @@ Content here...`;
 
     describe('Configuration', () => {
         it('should use custom Ollama URL', async () => {
-            const customExtractor = new MetadataExtractor('http://custom:11434', 'llama3.2:3b');
+            const customExtractor = new MetadataExtractor({
+                ollamaUrl: 'http://custom:11434',
+                ollamaModel: 'llama3.2:3b'
+            });
 
             const mockResponse = {
                 summary: 'Test',
@@ -262,7 +268,10 @@ Content here...`;
         });
 
         it('should use custom model name', async () => {
-            const customExtractor = new MetadataExtractor('http://localhost:11434', 'custom-model');
+            const customExtractor = new MetadataExtractor({
+                ollamaUrl: 'http://localhost:11434',
+                ollamaModel: 'custom-model'
+            });
 
             const mockResponse = {
                 summary: 'Test',

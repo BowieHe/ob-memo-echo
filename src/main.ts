@@ -55,10 +55,15 @@ export default class ImageVectorPlugin extends Plugin {
         console.log('✂️ Chunker initialized');
 
         // v0.2.0: Initialize metadata extractor
-        this.metadataExtractor = new MetadataExtractor(
-            this.settings.ollamaUrl,
-            'llama3.2:3b'
-        );
+        this.metadataExtractor = new MetadataExtractor({
+            enableAi: this.settings.enableAiMetadata,
+            provider: this.settings.aiGenProvider,
+            ollamaUrl: this.settings.aiGenUrl,
+            ollamaModel: this.settings.aiGenModel,
+            openaiUrl: this.settings.aiGenUrl,
+            openaiModel: this.settings.aiGenModel,
+            openaiApiKey: this.settings.aiGenApiKey
+        });
         console.log('🏷️ Metadata extractor initialized');
 
         // v0.2.0: Initialize index manager
