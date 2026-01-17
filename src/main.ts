@@ -25,7 +25,7 @@ export default class MemoEchoPlugin extends Plugin {
     paragraphDetector: ParagraphDetector | null = null;
 
     async onload() {
-        console.log('Loading Memo Echo Plugin v0.2.0');
+        console.log('Loading Memo Echo Plugin v0.3.0');
 
         // Load settings
         await this.loadSettings();
@@ -80,9 +80,7 @@ export default class MemoEchoPlugin extends Plugin {
             (leaf) => {
                 this.searchView = new SemanticSearchView(
                     leaf,
-                    this.embeddingService,
-                    this.vectorStore,
-                    this.metadataExtractor
+                    this.indexManager
                 );
                 return this.searchView;
             }

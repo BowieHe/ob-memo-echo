@@ -1,6 +1,6 @@
 /**
  * VectorStore - Vector storage and similarity search using Qdrant
- * Auto-detects vector dimension from first insert
+ * v0.4.0: Supports Named Vectors (content_vec, summary_vec, title_vec)
  */
 
 import { QdrantClient } from '@qdrant/js-client-rest';
@@ -14,9 +14,30 @@ function generateUUID(): string {
     });
 }
 
+// Named vector names
+export const VECTOR_NAMES = {
+    CONTENT: 'content_vec',
+    SUMMARY: 'summary_vec',
+    TITLE: 'title_vec',
+} as const;
+
+export type VectorName = typeof VECTOR_NAMES[keyof typeof VECTOR_NAMES];
+
+// Legacy single-vector item (for backward compatibility)
 export interface VectorItem {
     id: string;
     vector: number[];
+    metadata: Record<string, any>;
+}
+
+// v0.4.0: Multi-vector item
+export interface MultiVectorItem {
+    id: string;
+    vectors: {
+        [VECTOR_NAMES.CONTENT]: number[];
+        [VECTOR_NAMES.SUMMARY]: number[];
+        [VECTOR_NAMES.TITLE]: number[];
+    };
     metadata: Record<string, any>;
 }
 
@@ -26,11 +47,19 @@ export interface SearchResult {
     metadata: Record<string, any>;
 }
 
+// Default fusion weights
+export const DEFAULT_WEIGHTS = {
+    [VECTOR_NAMES.CONTENT]: 0.4,
+    [VECTOR_NAMES.SUMMARY]: 0.4,
+    [VECTOR_NAMES.TITLE]: 0.2,
+};
+
 export class VectorStore {
     private client: QdrantClient;
     private collectionName: string;
-    private vectorSize: number | null = null; // Auto-detect
+    private vectorSize: number | null = null;
     private isInitialized = false;
+    private useNamedVectors = true; // v0.4.0 default
 
     constructor(
         collectionName: string = 'obsidian_notes',
@@ -41,7 +70,58 @@ export class VectorStore {
     }
 
     /**
-     * Insert or update a single vector
+     * Insert or update with multiple named vectors (v0.4.0)
+     */
+    async upsertMultiVector(item: MultiVectorItem): Promise<void> {
+        // Auto-detect dimension from first vector
+        if (this.vectorSize === null) {
+            this.vectorSize = item.vectors[VECTOR_NAMES.CONTENT].length;
+            console.log(`Auto-detected vector dimension: ${this.vectorSize}`);
+            await this.ensureNamedVectorCollection(this.vectorSize);
+        }
+
+        const uuid = generateUUID();
+
+        await this.client.upsert(this.collectionName, {
+            points: [
+                {
+                    id: uuid,
+                    vector: {
+                        [VECTOR_NAMES.CONTENT]: item.vectors[VECTOR_NAMES.CONTENT],
+                        [VECTOR_NAMES.SUMMARY]: item.vectors[VECTOR_NAMES.SUMMARY],
+                        [VECTOR_NAMES.TITLE]: item.vectors[VECTOR_NAMES.TITLE],
+                    },
+                    payload: {
+                        ...item.metadata,
+                        _customId: item.id,
+                    },
+                },
+            ],
+        });
+    }
+
+    /**
+     * Ensure collection exists with Named Vectors (v0.4.0)
+     */
+    private async ensureNamedVectorCollection(dimension: number): Promise<void> {
+        try {
+            const collection = await this.client.getCollection(this.collectionName);
+            console.log('Collection exists:', collection.config);
+        } catch (error) {
+            console.log(`Creating collection with Named Vectors, dimension ${dimension}`);
+            await this.client.createCollection(this.collectionName, {
+                vectors: {
+                    [VECTOR_NAMES.CONTENT]: { size: dimension, distance: 'Cosine' },
+                    [VECTOR_NAMES.SUMMARY]: { size: dimension, distance: 'Cosine' },
+                    [VECTOR_NAMES.TITLE]: { size: dimension, distance: 'Cosine' },
+                },
+            });
+            console.log('Collection with Named Vectors created successfully');
+        }
+    }
+
+    /**
+     * Legacy: Insert or update a single vector (backward compatibility)
      */
     async upsert(item: VectorItem): Promise<void> {
         // Auto-detect dimension from first vector
@@ -77,7 +157,7 @@ export class VectorStore {
     }
 
     /**
-     * Ensure collection exists with correct dimension
+     * Legacy: Ensure collection exists with single vector
      */
     private async ensureCollection(dimension: number): Promise<void> {
         try {
@@ -168,6 +248,73 @@ export class VectorStore {
             return {
                 id: _customId,
                 score: result.score,
+                metadata,
+            };
+        });
+    }
+
+    /**
+     * Search with Named Vectors fusion (v0.4.0)
+     * Uses Qdrant Query API with Reciprocal Rank Fusion
+     */
+    async searchWithFusion(
+        queryVector: number[],
+        options: {
+            limit?: number;
+            weights?: { content?: number; summary?: number; title?: number };
+            filter?: { tags?: string[] };
+        } = {}
+    ): Promise<SearchResult[]> {
+        const limit = options.limit || 10;
+        const prefetchLimit = limit * 2; // Fetch more for better fusion
+
+        // Build filter condition if tags provided
+        let filterCondition: any = undefined;
+        if (options.filter?.tags && options.filter.tags.length > 0) {
+            filterCondition = {
+                must: [
+                    {
+                        key: 'tags',
+                        match: { any: options.filter.tags },
+                    },
+                ],
+            };
+        }
+
+        // Use Qdrant Query API for fusion search
+        const results = await this.client.query(this.collectionName, {
+            prefetch: [
+                {
+                    query: queryVector,
+                    using: VECTOR_NAMES.CONTENT,
+                    limit: prefetchLimit,
+                    filter: filterCondition,
+                },
+                {
+                    query: queryVector,
+                    using: VECTOR_NAMES.SUMMARY,
+                    limit: prefetchLimit,
+                    filter: filterCondition,
+                },
+                {
+                    query: queryVector,
+                    using: VECTOR_NAMES.TITLE,
+                    limit: prefetchLimit,
+                    filter: filterCondition,
+                },
+            ],
+            query: { fusion: 'rrf' }, // Reciprocal Rank Fusion
+            limit,
+            with_payload: true,
+        });
+
+        return results.points.map(point => {
+            const payload = point.payload as any;
+            const { _customId, ...metadata } = payload;
+
+            return {
+                id: _customId,
+                score: point.score || 0,
                 metadata,
             };
         });

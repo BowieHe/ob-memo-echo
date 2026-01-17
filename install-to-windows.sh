@@ -5,39 +5,28 @@
 echo "🔧 Obsidian 语义搜索插件安装向导 (WSL → Windows)"
 echo ""
 
-# 检查是否提供了 Windows 路径
+# 默认 Windows 路径 (WSL 格式)
+DEFAULT_PATH="/mnt/c/Users/hbw23/OneDrive/Documents/Note"
+
+# 检查是否提供了路径参数,否则使用默认值
 if [ -z "$1" ]; then
-    echo "❌ 请提供你的 Obsidian Vault 的 Windows 路径"
-    echo ""
-    echo "用法:"
-    echo "  ./install-to-windows.sh 'C:\\Users\\YourName\\Documents\\MyVault'"
-    echo ""
-    echo "或使用 WSL 路径格式:"
-    echo "  ./install-to-windows.sh /mnt/c/Users/YourName/Documents/MyVault"
-    echo ""
-    echo "💡 提示: 在 Obsidian 中查看 Vault 路径:"
-    echo "   设置 → 关于 → 显示 Vault 文件夹"
-    exit 1
-fi
-
-WINDOWS_PATH="$1"
-
-# 转换 Windows 路径到 WSL 路径
-if [[ "$WINDOWS_PATH" == *":"* ]]; then
-    # 处理 Windows 格式路径 (C:\Users\...)
-    # 移除反斜杠,转换为正斜杠
-    WINDOWS_PATH="${WINDOWS_PATH//\\//}"
-    
-    # 提取驱动器字母
-    DRIVE="${WINDOWS_PATH:0:1}"
-    DRIVE_LOWER=$(echo "$DRIVE" | tr '[:upper:]' '[:lower:]')
-    
-    # 构建 WSL 路径
-    REST_PATH="${WINDOWS_PATH:2}"
-    VAULT_PATH="/mnt/${DRIVE_LOWER}${REST_PATH}"
+    echo "ℹ️  未提供路径,使用默认路径: $DEFAULT_PATH"
+    VAULT_PATH="$DEFAULT_PATH"
 else
-    # 已经是 WSL 路径格式
-    VAULT_PATH="$WINDOWS_PATH"
+    WINDOWS_PATH="$1"
+    
+    # 转换 Windows 路径到 WSL 路径
+    if [[ "$WINDOWS_PATH" == *":"* ]]; then
+        # 处理 Windows 格式路径 (C:\Users\...)
+        WINDOWS_PATH="${WINDOWS_PATH//\\//}"
+        DRIVE="${WINDOWS_PATH:0:1}"
+        DRIVE_LOWER=$(echo "$DRIVE" | tr '[:upper:]' '[:lower:]')
+        REST_PATH="${WINDOWS_PATH:2}"
+        VAULT_PATH="/mnt/${DRIVE_LOWER}${REST_PATH}"
+    else
+        # 已经是 WSL 路径格式
+        VAULT_PATH="$WINDOWS_PATH"
+    fi
 fi
 
 echo "📁 目标路径: $VAULT_PATH"
@@ -78,14 +67,7 @@ echo "1. 打开 Obsidian (Windows)"
 echo "2. 进入 设置 → 社区插件"
 echo "3. 关闭 安全模式 (如果还没关闭)"
 echo "4. 刷新插件列表"
-echo "5. 启用 'ob image vector' 插件"
+echo "5. 启用 'Memo Echo' 插件"
 echo ""
-echo "⚠️  重要: Rust 服务需要在 WSL 中运行"
-echo "   在 WSL 终端执行:"
-echo "   cd /home/bowie/code/ob-image-vector/core"
-echo "   cargo run --release"
-echo ""
-echo "🌐 网络连接:"
-echo "   Windows Obsidian 会连接到 localhost:37337"
-echo "   WSL 的服务会自动暴露给 Windows"
+echo "✨ 享受你的 AI 知识助手吧!"
 echo ""

@@ -7,6 +7,8 @@ export interface ExtractedMetadata {
     summary: string;
     tags: string[];
     category: string;
+    concepts: string[]; // Abstract concepts (e.g., 'Idempotency', 'Trade-offs')
+    thinking_point: string; // Aphorism/Insight (e.g., 'Reliability requires state tracking')
 }
 
 /**
@@ -55,6 +57,8 @@ export class MetadataExtractor {
                 summary: '',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: '',
             };
         }
 
@@ -149,6 +153,8 @@ export class MetadataExtractor {
             summary: result.summary || '',
             tags: this.normalizeTags(result.tags || []),
             category: this.normalizeCategory(result.category || '技术笔记'),
+            concepts: this.normalizeTags(result.concepts || []), // Reuse tag normalization for concepts
+            thinking_point: result.thinking_point || '',
         };
     }
 
@@ -158,7 +164,7 @@ export class MetadataExtractor {
         const tags = this.extractKeywords(content);
         const category = this.inferCategory(content);
 
-        return { summary, tags, category };
+        return { summary, tags, category, concepts: [], thinking_point: '' };
     }
 
     // ... (private buildPrompt, extractSummary, etc. - assume they are preserved if I use correct ranges OR I must include them if I replace whole class)
@@ -184,17 +190,24 @@ export class MetadataExtractor {
 ${truncatedContent}
 """
 
+请分析这段内容，识别其中包含的**核心问题**（如"防止重复处理"）和**技术机制/设计模式**（如"幂等性"）。
+请忽略具体的技术名称（如 Kafka, Redis），而是提取通用的计算机科学或工程概念。
+
 请以 JSON 格式返回：
 {
   "summary": "一句话概括（20-50 字）",
   "tags": ["标签1", "标签2", "标签3", "标签4"],
-  "category": "技术笔记"
+  "category": "技术笔记",
+  "concepts": ["概念1", "概念2"],
+  "thinking_point": "一句简短的箴言或核心洞见（5-15字），概括其背后的思想，类似'几字箴言'。"
 }
 
 要求：
-- summary 要简洁准确，突出核心观点
-- tags 选择最重要的 3-5 个关键词
-- category 从以下选项中选择最合适的一个：技术笔记、生活日记、读书笔记、想法灵感、工作记录
+- summary: 简明扼要。
+- tags: 具体的关键词（如 Rust, Kafka）。
+- concepts: 抽象的概念或模式（如 Idempotency, Event Sourcing, CAP Theorem）。即使原文没提到，也要根据原理推断。
+- thinking_point: 有深度的总结，用于启发思考。例如："所有权机制是内存安全的基石" 或 "状态一致性需要牺牲可用性"。
+- category: 从以下选项中选择：技术笔记、生活日记、读书笔记、想法灵感、工作记录
 
 只返回 JSON，不要其他内容。`;
     }

@@ -111,7 +111,7 @@ export class EmbeddingService {
 
         this.localEmbedder = await pipeline(
             'feature-extraction',
-            'Xenova/all-MiniLM-L6-v2'
+            'Xenova/bge-m3'
         );
 
         this.isInitialized = true;

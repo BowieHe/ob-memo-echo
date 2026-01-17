@@ -22,7 +22,9 @@ describe('VectorIndexManager (v0.2.0)', () => {
         mockVectorStore = {
             upsert: jest.fn(),
             upsertBatch: jest.fn(),
+            upsertMultiVector: jest.fn(),
             search: jest.fn(),
+            searchWithFusion: jest.fn(),
         } as any;
 
         mockEmbeddingService = {
@@ -76,6 +78,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Test summary',
                 tags: ['test'],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Test point',
             });
 
             await manager.indexFile(filePath, content);
@@ -109,6 +113,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.indexFile(filePath, content);
@@ -154,13 +160,15 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             // Add chunk to cache
             await manager.indexFile('/test.md', '# Test\n\nCached content');
 
-            // Mock vector store results
-            mockVectorStore.search.mockResolvedValue([
+            // Mock vector store results (v0.4.0: searchWithFusion)
+            mockVectorStore.searchWithFusion.mockResolvedValue([
                 {
                     id: 'persisted-chunk',
                     score: 0.9,
@@ -168,11 +176,11 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 },
             ]);
 
-            const results = await manager.search(query, 10);
+            const results = await manager.search(query, { limit: 10 });
 
             // Should combine cache and vector store results
             expect(results.length).toBeGreaterThan(0);
-            expect(mockVectorStore.search).toHaveBeenCalledWith(queryEmbedding, 10);
+            expect(mockVectorStore.searchWithFusion).toHaveBeenCalled();
         });
 
         // TC-3.25: Deduplicate search results
@@ -183,7 +191,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
             mockEmbeddingService.embed.mockResolvedValue(queryEmbedding);
 
             // Same chunk in both cache and store
-            mockVectorStore.search.mockResolvedValue([
+            mockVectorStore.searchWithFusion.mockResolvedValue([
                 {
                     id: 'chunk-1',
                     score: 0.8,
@@ -201,7 +209,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 timestamp: Date.now(),
             });
 
-            const results = await manager.search(query, 10);
+            const results = await manager.search(query, { limit: 10 });
 
             // Should only have one result (deduplicated)
             const uniqueIds = new Set(results.map(r => r.id));
@@ -232,6 +240,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.indexFile('/test.md', 'Content');
@@ -240,7 +250,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
 
             await manager.flush();
 
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalled();
+            expect(mockVectorStore.upsertMultiVector).toHaveBeenCalled();
             expect(manager.getQueueSize()).toBe(0);
         });
 
@@ -266,6 +276,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.indexFile('/test.md', 'Content');
@@ -273,7 +285,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
             // Simulate file save
             await manager.onFileSave('/test.md');
 
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalled();
+            expect(mockVectorStore.upsertMultiVector).toHaveBeenCalled();
         });
     });
 
@@ -308,6 +320,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.indexFile('/test.md', 'Content 1\nContent 2');
@@ -341,6 +355,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'Old summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.indexFile('/test.md', 'Old content');
@@ -362,6 +378,8 @@ describe('VectorIndexManager (v0.2.0)', () => {
                 summary: 'New summary',
                 tags: [],
                 category: '技术笔记',
+                concepts: [],
+                thinking_point: 'Point',
             });
 
             await manager.updateFile('/test.md', 'New content');

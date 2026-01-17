@@ -1,11 +1,11 @@
 /**
  * VectorIndexManager - Orchestrates indexing, caching, and persistence
- * Provides unified interface for incremental indexing system
+ * v0.4.0: Supports Named Vectors (content_vec, summary_vec, title_vec)
  */
 
 import { MemoryCache, CachedChunk } from './memory-cache';
-import { PersistQueue, QueuedChunk } from './persist-queue';
-import { VectorStore, SearchResult } from './vector-store';
+import { PersistQueue, MultiVectorQueuedChunk } from './persist-queue';
+import { VectorStore, SearchResult, VECTOR_NAMES } from './vector-store';
 import { EmbeddingService } from './embedding-service';
 import { Chunker, ChunkResult } from './chunker';
 import { MetadataExtractor } from './metadata-extractor';
@@ -34,6 +34,7 @@ export class VectorIndexManager {
         this.persistQueue = new PersistQueue(vectorStore, {
             batchSize: 50,
             flushInterval: 30000,
+            useMultiVector: true, // v0.4.0
         });
     }
 
@@ -50,65 +51,85 @@ export class VectorIndexManager {
     }
 
     /**
-     * Index a single chunk
+     * Index a single chunk with Named Vectors (v0.4.0)
+     * Generates three embeddings: content, summary, title
      */
     private async indexChunk(filePath: string, chunk: ChunkResult): Promise<void> {
         const chunkId = `${filePath}-chunk-${chunk.index}`;
 
-        // Generate embedding
-        const embedding = await this.embeddingService.embed(chunk.content);
-
-        // Extract metadata
+        // Extract metadata first (to get summary)
         const extractedMetadata = await this.metadataExtractor.extract(chunk.content);
 
-        // Create cached chunk
+        // Generate three embeddings in parallel
+        const [contentEmbedding, summaryEmbedding, titleEmbedding] = await Promise.all([
+            this.embeddingService.embed(chunk.content),
+            this.embeddingService.embed(extractedMetadata.summary || chunk.content.slice(0, 200)),
+            this.embeddingService.embed(chunk.header_path || filePath),
+        ]);
+
+        // Simplified payload (v0.4.0)
+        const payload = {
+            filePath,
+            header_path: chunk.header_path,
+            start_line: chunk.start_line,
+            end_line: chunk.end_line,
+            content: chunk.content,
+            summary: extractedMetadata.summary,
+            tags: [
+                ...extractedMetadata.tags,
+                extractedMetadata.category, // Merge category into tags
+                ...extractedMetadata.concepts, // Merge concepts into tags
+            ].filter(Boolean),
+            word_count: chunk.content.length,
+            indexedAt: Date.now(),
+        };
+
+        // Create cached chunk (use content embedding for cache search)
         const cachedChunk: CachedChunk = {
             id: chunkId,
             content: chunk.content,
-            embedding,
-            metadata: {
-                filePath,
-                content: chunk.content,
-                headers: chunk.headers,
-                startPos: chunk.startPos,
-                endPos: chunk.endPos,
-                start_line: chunk.start_line,
-                end_line: chunk.end_line,
-                header_path: chunk.header_path,
-                summary: extractedMetadata.summary,
-                tags: extractedMetadata.tags,
-                category: extractedMetadata.category,
-                word_count: chunk.content.length,
-                indexedAt: Date.now(),
-            },
+            embedding: contentEmbedding,
+            metadata: payload,
             timestamp: Date.now(),
         };
 
         // Add to cache
         this.memoryCache.set(chunkId, cachedChunk);
 
-        // Add to persist queue
-        const queuedChunk: QueuedChunk = {
+        // Add to multi-vector persist queue
+        const queuedChunk: MultiVectorQueuedChunk = {
             id: chunkId,
-            vector: embedding,
-            metadata: cachedChunk.metadata,
+            vectors: {
+                [VECTOR_NAMES.CONTENT]: contentEmbedding,
+                [VECTOR_NAMES.SUMMARY]: summaryEmbedding,
+                [VECTOR_NAMES.TITLE]: titleEmbedding,
+            },
+            metadata: payload,
         };
 
-        this.persistQueue.enqueue(queuedChunk);
+        this.persistQueue.enqueueMultiVector(queuedChunk);
     }
 
     /**
-     * Search across cache and vector store
+     * Search across cache and vector store with Named Vectors fusion (v0.4.0)
      */
-    async search(query: string, limit: number = 10): Promise<SearchResult[]> {
+    async search(
+        query: string,
+        options: { limit?: number; tags?: string[] } = {}
+    ): Promise<SearchResult[]> {
+        const limit = options.limit || 10;
+
         // Generate query embedding
         const queryEmbedding = await this.embeddingService.embed(query);
 
         // Search in cache
         const cacheResults = this.searchInCache(queryEmbedding, limit);
 
-        // Search in vector store
-        const storeResults = await this.vectorStore.search(queryEmbedding, limit);
+        // Search in vector store with fusion (v0.4.0)
+        const storeResults = await this.vectorStore.searchWithFusion(queryEmbedding, {
+            limit,
+            filter: options.tags ? { tags: options.tags } : undefined,
+        });
 
         // Combine and deduplicate results
         const combinedResults = this.combineResults(cacheResults, storeResults, limit);
@@ -184,10 +205,10 @@ export class VectorIndexManager {
     }
 
     /**
-     * Flush persist queue to vector store
+     * Flush persist queue to vector store (v0.4.0: uses multi-vector)
      */
     async flush(): Promise<void> {
-        await this.persistQueue.flush();
+        await this.persistQueue.flushMultiVector();
     }
 
     /**
@@ -198,7 +219,7 @@ export class VectorIndexManager {
         const fileChunks = this.persistQueue.getByFilePath(filePath);
 
         if (fileChunks.length > 0) {
-            await this.persistQueue.flush();
+            await this.persistQueue.flushMultiVector();
         }
     }
 

@@ -1,7 +1,7 @@
 {
     "id": "memo-echo",
     "name": "Memo Echo",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "minAppVersion": "0.15.0",
     "description": "Your AI Knowledge Assistant. Automatically connects your thoughts and recalls relevant memories (notes) using vector search.",
     "author": "Bowie",
