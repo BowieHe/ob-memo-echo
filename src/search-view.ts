@@ -8,12 +8,18 @@ export const VIEW_TYPE_SEMANTIC_SEARCH = 'semantic-search-view';
 
 export class SemanticSearchView extends ItemView {
     private indexManager: VectorIndexManager;
+    private onIndexCurrentFile: () => Promise<void>;
     private container: HTMLElement;
     private root: Root | null = null;
 
-    constructor(leaf: WorkspaceLeaf, indexManager: VectorIndexManager) {
+    constructor(
+        leaf: WorkspaceLeaf,
+        indexManager: VectorIndexManager,
+        onIndexCurrentFile: () => Promise<void>,
+    ) {
         super(leaf);
         this.indexManager = indexManager;
+        this.onIndexCurrentFile = onIndexCurrentFile;
     }
 
     getViewType(): string {
@@ -45,7 +51,8 @@ export class SemanticSearchView extends ItemView {
         this.root.render(
             React.createElement(Sidebar, {
                 indexManager: this.indexManager,
-                initialMode: 'search'
+                initialMode: 'search',
+                onIndexCurrent: this.handleIndexCurrentFile, // Direct callback
             })
         );
     }
@@ -59,18 +66,7 @@ export class SemanticSearchView extends ItemView {
     }
 
     private handleIndexCurrentFile = async () => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (!activeFile) {
-            console.warn("No active file to index");
-            return;
-        }
-
-        try {
-            const content = await this.app.vault.read(activeFile);
-            await this.indexManager.indexFile(activeFile.path, content);
-        } catch (e) {
-            console.error(e);
-        }
+        await this.onIndexCurrentFile();
     };
 
     private handleOpenFile = async (event: any) => {

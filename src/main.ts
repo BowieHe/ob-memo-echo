@@ -1,31 +1,46 @@
 import { Plugin, MarkdownView } from 'obsidian';
 import { SemanticSearchView, VIEW_TYPE_SEMANTIC_SEARCH } from './search-view';
 import { RecommendationView, VIEW_TYPE_RECOMMENDATION } from './recommendation-view';
+import { AssociationView, VIEW_TYPE_ASSOCIATION } from './association-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
-import { VectorStore } from './services/vector-store';
+import { VectorBackend } from './services/vector-backend';
+import { QdrantBackend } from './services/qdrant-backend';
 import { Chunker } from './services/chunker';
 import { MetadataExtractor } from './services/metadata-extractor';
 import { VectorIndexManager } from './services/vector-index-manager';
 import { ParagraphDetector } from './services/paragraph-detector';
+import { FrontmatterService } from './services/frontmatter-service';
+import { ConceptExtractor } from './services/concept-extractor';
+import { SimpleAssociationEngine } from './services/association-engine';
+import { AssociationPreferences } from './services/association-preferences';
 
 export default class MemoEchoPlugin extends Plugin {
     private searchView: SemanticSearchView | null = null;
     private recommendationView: RecommendationView | null = null;
+    private associationView: AssociationView | null = null;
 
     // Settings
     settings: MemoEchoSettings;
 
     // Services
     embeddingService: EmbeddingService;
-    vectorStore: VectorStore;
+    vectorBackend: VectorBackend;
     chunker: Chunker;
     metadataExtractor: MetadataExtractor;
     indexManager: VectorIndexManager;
     paragraphDetector: ParagraphDetector | null = null;
 
+    // v0.5.0 services
+    frontmatterService: FrontmatterService;
+    conceptExtractor: ConceptExtractor;
+
+    // v0.6.0 services
+    associationEngine: SimpleAssociationEngine;
+    associationPreferences: AssociationPreferences;
+
     async onload() {
-        console.log('Loading Memo Echo Plugin v0.3.0');
+        console.log('Loading Memo Echo Plugin v0.6.0');
 
         // Load settings
         await this.loadSettings();
@@ -40,12 +55,12 @@ export default class MemoEchoPlugin extends Plugin {
         });
         console.log(`🤖 Embedding service initialized: ${this.settings.embeddingProvider}`);
 
-        // VectorStore without dimension - will auto-detect
-        this.vectorStore = new VectorStore(
+        // VectorBackend - using Qdrant by default (v0.5.0)
+        this.vectorBackend = new QdrantBackend(
             this.settings.qdrantCollection,
             this.settings.qdrantUrl
         );
-        console.log(`🗄️ Vector store initialized: ${this.settings.qdrantUrl}`);
+        console.log(`🗄️ Vector backend initialized: Qdrant @ ${this.settings.qdrantUrl}`);
 
         this.chunker = new Chunker({
             minChunkSize: 500,
@@ -66,13 +81,56 @@ export default class MemoEchoPlugin extends Plugin {
         });
         console.log('🏷️ Metadata extractor initialized');
 
-        // v0.2.0: Initialize index manager
+        // v0.5.0: Initialize concept extractor
+        this.conceptExtractor = new ConceptExtractor({
+            provider: this.settings.conceptExtractionProvider,
+            ollamaUrl: this.settings.ollamaUrl,
+            ollamaModel: this.settings.aiGenModel,
+            openaiApiKey: this.settings.openaiApiKey,
+            // v0.6.0: Abstract concept extraction settings
+            focusOnAbstractConcepts: this.settings.focusOnAbstractConcepts,
+            minConfidence: this.settings.minConceptConfidence,
+            excludeGenericConcepts: this.settings.excludeGenericConcepts
+                ? this.settings.excludeGenericConcepts.split(',').map(s => s.trim()).filter(s => s.length > 0)
+                : [],
+        });
+        console.log('💡 Concept extractor initialized (v0.6.0)');
+
+        // v0.6.0: Initialize association engine (before indexManager)
+        this.associationEngine = new SimpleAssociationEngine(this.conceptExtractor, {
+            minConfidence: this.settings.associationMinConfidence,
+        });
+        console.log('🔗 Association engine initialized (v0.6.0)');
+
+        // v0.6.0: Initialize association preferences
+        this.associationPreferences = new AssociationPreferences(
+            () => ({
+                ignoredAssociations: this.settings.associationIgnoredAssociations,
+                deletedConcepts: this.settings.associationDeletedConcepts,
+            }),
+            async (next) => {
+                this.settings.associationIgnoredAssociations = next.ignoredAssociations;
+                this.settings.associationDeletedConcepts = next.deletedConcepts;
+                await this.saveSettings();
+            },
+        );
+
+        // v0.5.0: Initialize index manager with VectorBackend
         this.indexManager = new VectorIndexManager(
-            this.vectorStore,
+            this.vectorBackend,
             this.embeddingService,
             this.chunker,
-            this.metadataExtractor
+            this.metadataExtractor,
+            50 * 1024 * 1024, // 50MB cache
+            this.associationEngine,
         );
+
+        // v0.5.0: Initialize frontmatter service
+        this.frontmatterService = new FrontmatterService(
+            this.app,
+            this.settings.conceptPageFolder
+        );
+        console.log('📝 Frontmatter service initialized');
 
         // Register the search view
         this.registerView(
@@ -80,7 +138,8 @@ export default class MemoEchoPlugin extends Plugin {
             (leaf) => {
                 this.searchView = new SemanticSearchView(
                     leaf,
-                    this.indexManager
+                    this.indexManager,
+                    this.indexCurrentFileWithConcepts,
                 );
                 return this.searchView;
             }
@@ -92,9 +151,25 @@ export default class MemoEchoPlugin extends Plugin {
             (leaf) => {
                 this.recommendationView = new RecommendationView(
                     leaf,
-                    this.indexManager
+                    this.indexManager,
+                    this.indexCurrentFileWithConcepts,
                 );
                 return this.recommendationView;
+            }
+        );
+
+        // v0.6.0: Register association view
+        this.registerView(
+            VIEW_TYPE_ASSOCIATION,
+            (leaf) => {
+                this.associationView = new AssociationView(
+                    leaf,
+                    this.associationEngine,
+                    this.frontmatterService,
+                    this.associationPreferences,
+                    () => this.settings,
+                );
+                return this.associationView;
             }
         );
 
@@ -106,6 +181,11 @@ export default class MemoEchoPlugin extends Plugin {
         // v0.2.0: Add ribbon icon for recommendations
         this.addRibbonIcon('links', '相关推荐', () => {
             this.activateRecommendationView();
+        });
+
+        // v0.6.0: Add ribbon icon for associations
+        this.addRibbonIcon('link-2', '关联建议', () => {
+            this.activateAssociationView();
         });
 
         // Add command to open search view
@@ -123,6 +203,15 @@ export default class MemoEchoPlugin extends Plugin {
             name: '打开相关推荐',
             callback: () => {
                 this.activateRecommendationView();
+            },
+        });
+
+        // v0.6.0: Add command to open association view
+        this.addCommand({
+            id: 'open-associations',
+            name: '打开关联建议',
+            callback: () => {
+                this.activateAssociationView();
             },
         });
 
@@ -146,6 +235,7 @@ export default class MemoEchoPlugin extends Plugin {
 
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SEMANTIC_SEARCH);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_RECOMMENDATION);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_ASSOCIATION);
     }
 
     async activateView() {
@@ -180,6 +270,66 @@ export default class MemoEchoPlugin extends Plugin {
             if (rightLeaf) {
                 await rightLeaf.setViewState({
                     type: VIEW_TYPE_RECOMMENDATION,
+                    active: true,
+                });
+                leaf = rightLeaf;
+            }
+        }
+
+        if (leaf) {
+            workspace.revealLeaf(leaf);
+        }
+    }
+
+    private indexCurrentFileWithConcepts = async (): Promise<void> => {
+        console.log('[MemoEcho] Index current file requested (plugin)');
+        const activeFile = this.app.workspace.getActiveFile();
+
+        if (!activeFile) {
+            console.warn('[MemoEcho] No active file to index');
+            return;
+        }
+
+        try {
+            console.log('[MemoEcho] Reading active file for indexing:', activeFile.path);
+            const content = await this.app.vault.read(activeFile);
+
+            await this.indexManager.indexFile(activeFile.path, content);
+
+            if (!this.settings.injectConcepts) {
+                console.log('[MemoEcho] Concept injection disabled; skipping frontmatter write');
+                return;
+            }
+
+            let concepts = this.associationEngine.getNoteConcepts(activeFile.path);
+            if (!concepts || concepts.length === 0) {
+                const extracted = await this.conceptExtractor.extract(content, activeFile.basename);
+                concepts = extracted.concepts;
+            }
+
+            if (!concepts || concepts.length === 0) {
+                console.warn('[MemoEcho] No concepts extracted; skipping frontmatter write');
+                return;
+            }
+
+            await this.frontmatterService.updateAfterIndexing(activeFile, concepts);
+            console.log('[MemoEcho] Frontmatter updated with concepts:', concepts.length);
+        } catch (error) {
+            console.error('[MemoEcho] Failed to index current file:', error);
+        }
+    };
+
+    // v0.6.0: Activate association view
+    async activateAssociationView() {
+        const { workspace } = this.app;
+
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_ASSOCIATION)[0];
+
+        if (!leaf) {
+            const rightLeaf = workspace.getRightLeaf(false);
+            if (rightLeaf) {
+                await rightLeaf.setViewState({
+                    type: VIEW_TYPE_ASSOCIATION,
                     active: true,
                 });
                 leaf = rightLeaf;

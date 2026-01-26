@@ -1,24 +1,30 @@
 /**
- * Unit tests for PersistQueue (v0.2.0)
+ * Unit tests for PersistQueue (v0.5.0)
  * Tests batch persistence queue with deduplication
  */
 
 import { PersistQueue, QueuedChunk } from '../services/persist-queue';
-import { VectorStore } from '../services/vector-store';
+import { VectorBackend } from '../services/vector-backend';
 
-describe('PersistQueue (v0.2.0)', () => {
+describe('PersistQueue (v0.5.0)', () => {
     let queue: PersistQueue;
-    let mockVectorStore: jest.Mocked<VectorStore>;
+    let mockBackend: jest.Mocked<VectorBackend>;
 
     beforeEach(() => {
-        mockVectorStore = {
-            upsert: jest.fn(),
-            upsertBatch: jest.fn(),
-        } as any;
+        mockBackend = {
+            initialize: jest.fn().mockResolvedValue(undefined),
+            upsertMultiVector: jest.fn().mockResolvedValue(undefined),
+            searchWithFusion: jest.fn().mockResolvedValue([]),
+            delete: jest.fn().mockResolvedValue(undefined),
+            deleteByFilePath: jest.fn().mockResolvedValue(undefined),
+            count: jest.fn().mockResolvedValue(0),
+            clear: jest.fn().mockResolvedValue(undefined),
+        };
 
-        queue = new PersistQueue(mockVectorStore, {
+        queue = new PersistQueue(mockBackend, {
             batchSize: 10,
             flushInterval: 5000,
+            useMultiVector: false, // Use legacy queue for these tests
         });
     });
 
@@ -112,12 +118,13 @@ describe('PersistQueue (v0.2.0)', () => {
     describe('Batch Flushing', () => {
         // TC-3.15: Flush when batch size reached
         it('should flush when batch size reached', async () => {
-            const smallQueue = new PersistQueue(mockVectorStore, {
+            const smallQueue = new PersistQueue(mockBackend, {
                 batchSize: 3,
                 flushInterval: 60000,
+                useMultiVector: false,
             });
 
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             // Add 3 chunks (reaches batch size)
             smallQueue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
@@ -127,14 +134,8 @@ describe('PersistQueue (v0.2.0)', () => {
             // Wait for async flush
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalledTimes(1);
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalledWith(
-                expect.arrayContaining([
-                    expect.objectContaining({ id: 'chunk-1' }),
-                    expect.objectContaining({ id: 'chunk-2' }),
-                    expect.objectContaining({ id: 'chunk-3' }),
-                ])
-            );
+            // Called once per chunk
+            expect(mockBackend.upsertMultiVector).toHaveBeenCalledTimes(3);
 
             expect(smallQueue.size()).toBe(0);
 
@@ -143,7 +144,7 @@ describe('PersistQueue (v0.2.0)', () => {
 
         // TC-3.16: Manual flush
         it('should flush manually', async () => {
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             queue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
             queue.enqueue({ id: 'chunk-2', vector: [], metadata: {} });
@@ -152,7 +153,8 @@ describe('PersistQueue (v0.2.0)', () => {
 
             await queue.flush();
 
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalledTimes(1);
+            // Called once per chunk
+            expect(mockBackend.upsertMultiVector).toHaveBeenCalledTimes(2);
             expect(queue.size()).toBe(0);
         });
 
@@ -160,12 +162,13 @@ describe('PersistQueue (v0.2.0)', () => {
         it('should flush periodically', async () => {
             jest.useFakeTimers();
 
-            const periodicQueue = new PersistQueue(mockVectorStore, {
+            const periodicQueue = new PersistQueue(mockBackend, {
                 batchSize: 100,
                 flushInterval: 1000, // 1 second
+                useMultiVector: false,
             });
 
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             periodicQueue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
 
@@ -177,7 +180,7 @@ describe('PersistQueue (v0.2.0)', () => {
             // Wait for async operations
             await Promise.resolve();
 
-            expect(mockVectorStore.upsertBatch).toHaveBeenCalled();
+            expect(mockBackend.upsertMultiVector).toHaveBeenCalled();
             expect(periodicQueue.size()).toBe(0);
 
             periodicQueue.stop();
@@ -186,18 +189,18 @@ describe('PersistQueue (v0.2.0)', () => {
 
         // TC-3.18: Don't flush empty queue
         it('should not flush empty queue', async () => {
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             await queue.flush();
 
-            expect(mockVectorStore.upsertBatch).not.toHaveBeenCalled();
+            expect(mockBackend.upsertMultiVector).not.toHaveBeenCalled();
         });
     });
 
     describe('Error Handling', () => {
         // TC-3.19: Handle flush errors gracefully
         it('should handle flush errors gracefully', async () => {
-            mockVectorStore.upsertBatch.mockRejectedValue(new Error('Network error'));
+            mockBackend.upsertMultiVector.mockRejectedValue(new Error('Network error'));
 
             queue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
 
@@ -209,7 +212,7 @@ describe('PersistQueue (v0.2.0)', () => {
 
         // TC-3.20: Retry on failure (optional)
         it('should keep chunks in queue on flush failure', async () => {
-            mockVectorStore.upsertBatch.mockRejectedValueOnce(new Error('Temporary error'));
+            mockBackend.upsertMultiVector.mockRejectedValueOnce(new Error('Temporary error'));
 
             queue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
             queue.enqueue({ id: 'chunk-2', vector: [], metadata: {} });
@@ -224,7 +227,7 @@ describe('PersistQueue (v0.2.0)', () => {
             expect(queue.size()).toBe(2);
 
             // Retry should work
-            mockVectorStore.upsertBatch.mockResolvedValueOnce(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValueOnce(undefined);
             await queue.flush();
 
             expect(queue.size()).toBe(0);
@@ -281,7 +284,7 @@ describe('PersistQueue (v0.2.0)', () => {
 
     describe('Statistics', () => {
         it('should track total flushed count', async () => {
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             queue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
             await queue.flush();
@@ -297,7 +300,7 @@ describe('PersistQueue (v0.2.0)', () => {
         });
 
         it('should track failed flushes', async () => {
-            mockVectorStore.upsertBatch.mockRejectedValue(new Error('Error'));
+            mockBackend.upsertMultiVector.mockRejectedValue(new Error('Error'));
 
             queue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
 
@@ -317,12 +320,13 @@ describe('PersistQueue (v0.2.0)', () => {
         it('should stop periodic flushing', () => {
             jest.useFakeTimers();
 
-            const periodicQueue = new PersistQueue(mockVectorStore, {
+            const periodicQueue = new PersistQueue(mockBackend, {
                 batchSize: 100,
                 flushInterval: 1000,
+                useMultiVector: false,
             });
 
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+            mockBackend.upsertMultiVector.mockResolvedValue(undefined);
 
             periodicQueue.enqueue({ id: 'chunk-1', vector: [], metadata: {} });
 
@@ -332,7 +336,7 @@ describe('PersistQueue (v0.2.0)', () => {
             jest.advanceTimersByTime(5000);
 
             // Should not flush after stop
-            expect(mockVectorStore.upsertBatch).not.toHaveBeenCalled();
+            expect(mockBackend.upsertMultiVector).not.toHaveBeenCalled();
 
             jest.useRealTimers();
         });

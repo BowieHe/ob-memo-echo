@@ -3,6 +3,7 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { buildAssociationExport } from './services/association-exporter';
 import type MemoEchoPlugin from './main';
 
 export interface MemoEchoSettings {
@@ -23,6 +24,27 @@ export interface MemoEchoSettings {
     // Qdrant settings
     qdrantUrl: string;
     qdrantCollection: string;
+
+    // v0.5.0: Frontmatter & Concept settings
+    injectConcepts: boolean;           // Whether to inject concepts to frontmatter
+    conceptExtractionProvider: 'ollama' | 'openai' | 'rules';
+    conceptPageFolder: string;         // Folder for concept pages (default: _me)
+    createConceptPages: boolean;       // Auto-create concept pages
+    enableIncrementalIndexing: boolean; // Only reindex changed files
+
+    // v0.6.0: Abstract Concept Extraction settings
+    focusOnAbstractConcepts: boolean;  // Focus on abstract concepts vs specific tech
+    minConceptConfidence: number;      // Minimum confidence threshold for concepts
+    excludeGenericConcepts: string;    // Comma-separated list of generic concepts to exclude
+
+    // v0.6.0: Association management settings
+    associationAutoScan: boolean;              // Auto scan associations on view open
+    associationMinConfidence: number;          // Minimum confidence to display
+    associationAutoAccept: boolean;            // Auto-accept high confidence associations
+    associationAutoAcceptConfidence: number;   // Threshold for auto-accept
+    associationAutoScanBatchSize: number;      // Max notes to scan on auto-scan
+    associationIgnoredAssociations: string[];  // Persist ignored association IDs
+    associationDeletedConcepts: Record<string, string[]>; // Persist deleted concepts
 }
 
 export const DEFAULT_SETTINGS: MemoEchoSettings = {
@@ -40,6 +62,27 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
 
     qdrantUrl: 'http://localhost:6333',
     qdrantCollection: 'obsidian_notes',
+
+    // v0.5.0 defaults
+    injectConcepts: true,
+    conceptExtractionProvider: 'ollama',
+    conceptPageFolder: '_me',
+    createConceptPages: true,
+    enableIncrementalIndexing: true,
+
+    // v0.6.0 defaults
+    focusOnAbstractConcepts: true,
+    minConceptConfidence: 0.7,
+    excludeGenericConcepts: '技术开发,总结,概述,简介,设计',
+
+    // v0.6.0 association defaults
+    associationAutoScan: true,
+    associationMinConfidence: 0.5,
+    associationAutoAccept: false,
+    associationAutoAcceptConfidence: 0.9,
+    associationAutoScanBatchSize: 50,
+    associationIgnoredAssociations: [],
+    associationDeletedConcepts: {},
 };
 
 export class MemoEchoSettingTab extends PluginSettingTab {
@@ -71,6 +114,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         // Qdrant Section
         this.addQdrantSection(containerEl);
+
+        // v0.5.0: Concept Injection Section
+        this.addConceptSection(containerEl);
 
         // Database Actions Section
         this.addDatabaseActionsSection(containerEl);
@@ -129,60 +175,13 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
             // Read file content
             const content = await this.app.vault.read(activeFile);
-            console.log(`📝 文件长度: ${content.length} 字符`);
 
-            // Chunk the content
-            console.log(`\n✂️ 开始分块...`);
-            const chunks = this.plugin.chunker.chunk(content);
-            console.log(`✅ 分块完成: ${chunks.length} 个块`);
-
-            if (chunks.length === 0) {
-                new Notice('⚠️ 文件内容为空');
-                console.log(`⚠️ 文件内容为空，跳过索引`);
-                return;
-            }
-
-            // Log chunk details
-            chunks.forEach((chunk, idx) => {
-                console.log(`\n--- 块 ${idx + 1}/${chunks.length} ---`);
-                console.log(`  📍 位置: 行 ${chunk.start_line}-${chunk.end_line}`);
-                console.log(`  📏 长度: ${chunk.content.length} 字符`);
-                console.log(`  🏷️ 标题路径: ${chunk.header_path || '(无)'}`);
-                console.log(`  📖 内容预览: ${chunk.content.substring(0, 100)}...`);
-            });
-
-            // Generate embeddings and store
-            console.log(`\n🤖 开始生成 Embedding...`);
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                console.log(`\n[${i + 1}/${chunks.length}] 处理块...`);
-
-                // Generate embedding
-                const startTime = Date.now();
-                const embedding = await this.plugin.embeddingService.embed(chunk.content);
-                const embedTime = Date.now() - startTime;
-                console.log(`  ✅ Embedding 生成完成 (${embedTime}ms, 维度: ${embedding.length})`);
-
-                await this.plugin.vectorStore.upsert({
-                    id: `${activeFile.path}-chunk-${chunk.index}`,
-                    vector: embedding,
-                    metadata: {
-                        filePath: activeFile.path,
-                        fileName: activeFile.basename,
-                        content: chunk.content,
-                        headers: chunk.headers,
-                        startPos: chunk.startPos,
-                        endPos: chunk.endPos,
-                        indexedAt: Date.now(),
-                        fileModified: activeFile.stat.mtime,
-                    },
-                });
-                console.log(`  💾 已存储到 Qdrant`);
-            }
+            // Use indexManager.indexFile() (v0.5.0)
+            await this.plugin.indexManager.indexFile(activeFile.path, content);
+            await this.plugin.indexManager.flush();
 
             console.log(`\n========== 索引完成 ==========`);
-            console.log(`✅ 成功索引 ${chunks.length} 个文本块\n`);
-            new Notice(`✅ 成功索引 ${chunks.length} 个文本块`);
+            new Notice(`✅ 文件已索引`);
 
             // Refresh stats
             this.display();
@@ -203,10 +202,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         const confirmed = confirm(
             '确定要同步所有 Markdown 文件吗?\n\n' +
-            '这将:\n' +
-            '- 索引新文件\n' +
-            '- 更新已修改的文件\n' +
-            '- 跳过未修改的文件\n\n' +
+            '这将索引所有 Markdown 文件。\n' +
             '可能需要一些时间,是否继续?'
         );
 
@@ -221,8 +217,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
             const files = this.app.vault.getMarkdownFiles();
             let indexed = 0;
-            let updated = 0;
-            let skipped = 0;
             let failed = 0;
 
             for (let i = 0; i < files.length; i++) {
@@ -234,53 +228,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         new Notice(`同步中: ${i}/${files.length} 文件...`);
                     }
 
-                    // Check if file needs indexing
-                    const needsIndexing = await this.checkIfNeedsIndexing(file);
-
-                    if (!needsIndexing) {
-                        skipped++;
-                        continue;
-                    }
-
-                    // Read and chunk
+                    // Read and index using indexManager (v0.5.0)
                     const content = await this.app.vault.read(file);
-                    const chunks = this.plugin.chunker.chunk(content);
-
-                    if (chunks.length === 0) {
-                        skipped++;
-                        continue;
-                    }
-
-                    // Delete old chunks
-                    const oldChunks = await this.getFileChunks(file.path);
-                    if (oldChunks.length > 0) {
-                        for (const oldChunk of oldChunks) {
-                            await this.plugin.vectorStore.delete(oldChunk);
-                        }
-                        updated++;
-                    } else {
-                        indexed++;
-                    }
-
-                    // Index new chunks
-                    for (const chunk of chunks) {
-                        const embedding = await this.plugin.embeddingService.embed(chunk.content);
-
-                        await this.plugin.vectorStore.upsert({
-                            id: `${file.path}-chunk-${chunk.index}`,
-                            vector: embedding,
-                            metadata: {
-                                filePath: file.path,
-                                fileName: file.basename,
-                                content: chunk.content,
-                                headers: chunk.headers,
-                                startPos: chunk.startPos,
-                                endPos: chunk.endPos,
-                                indexedAt: Date.now(),
-                                fileModified: file.stat.mtime,
-                            },
-                        });
-                    }
+                    await this.plugin.indexManager.updateFile(file.path, content);
+                    indexed++;
 
                 } catch (error) {
                     console.error(`Failed to sync ${file.path}:`, error);
@@ -288,10 +239,13 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 }
             }
 
+            // Flush all pending chunks
+            await this.plugin.indexManager.flush();
+
             new Notice(
                 `✅ 同步完成!\n\n` +
-                `新增: ${indexed} | 更新: ${updated}\n` +
-                `跳过: ${skipped} | 失败: ${failed}`,
+                `已索引: ${indexed} 个文件\n` +
+                `失败: ${failed}`,
                 10000
             );
 
@@ -303,40 +257,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             new Notice(`❌ 同步失败: ${error.message}`);
         } finally {
             this.isIndexing = false;
-        }
-    }
-
-    private async checkIfNeedsIndexing(file: TFile): Promise<boolean> {
-        try {
-            const chunks = await this.getFileChunks(file.path);
-
-            if (chunks.length === 0) {
-                return true;
-            }
-
-            const firstChunk = await this.plugin.vectorStore.get(chunks[0]);
-            if (!firstChunk || !firstChunk.metadata.fileModified) {
-                return true;
-            }
-
-            const lastIndexed = firstChunk.metadata.fileModified as number;
-            const currentModified = file.stat.mtime;
-
-            return currentModified > lastIndexed;
-
-        } catch (error) {
-            return true;
-        }
-    }
-
-    private async getFileChunks(filePath: string): Promise<string[]> {
-        try {
-            const allItems = await this.plugin.vectorStore.listAll(1000);
-            return allItems
-                .filter(item => item.metadata.filePath === filePath)
-                .map(item => item.id);
-        } catch (error) {
-            return [];
         }
     }
 
@@ -353,7 +273,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .setButtonText('检查连接')
                 .onClick(async () => {
                     try {
-                        const count = await this.plugin.vectorStore.count();
+                        const count = await this.plugin.vectorBackend.count();
                         new Notice(`✅ Qdrant 已连接 (${count} 个向量)`);
                     } catch (error) {
                         new Notice(`❌ Qdrant 连接失败: ${error.message}`);
@@ -661,6 +581,341 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .setValue('obsidian_notes'));
     }
 
+    // v0.5.0: Concept Injection Settings Section
+    private addConceptSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '💡 概念注入 (v0.5.0)' });
+
+        // Enable concept injection toggle
+        new Setting(containerEl)
+            .setName('启用概念注入')
+            .setDesc('将 AI 提取的概念写入笔记 frontmatter')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.injectConcepts)
+                .onChange(async (value) => {
+                    this.plugin.settings.injectConcepts = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
+
+        if (this.plugin.settings.injectConcepts) {
+            // Concept extraction provider
+            new Setting(containerEl)
+                .setName('概念提取方式')
+                .setDesc('使用 AI 或规则提取概念')
+                .addDropdown(dropdown => dropdown
+                    .addOption('ollama', 'Ollama (推荐)')
+                    .addOption('openai', 'OpenAI')
+                    .addOption('rules', '规则提取 (无需 AI)')
+                    .setValue(this.plugin.settings.conceptExtractionProvider)
+                    .onChange(async (value: 'ollama' | 'openai' | 'rules') => {
+                        this.plugin.settings.conceptExtractionProvider = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.conceptExtractor.updateConfig({ provider: value });
+                    }));
+
+            // Concept page folder
+            new Setting(containerEl)
+                .setName('概念页文件夹')
+                .setDesc('概念页存放位置 (如: _me)')
+                .addText(text => text
+                    .setPlaceholder('_me')
+                    .setValue(this.plugin.settings.conceptPageFolder)
+                    .onChange(async (value) => {
+                        this.plugin.settings.conceptPageFolder = value || '_me';
+                        await this.plugin.saveSettings();
+                    }));
+
+            // Create concept pages toggle
+            new Setting(containerEl)
+                .setName('自动创建概念页')
+                .setDesc('首次遇到新概念时自动创建概念页文件')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.createConceptPages)
+                    .onChange(async (value) => {
+                        this.plugin.settings.createConceptPages = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            // Incremental indexing toggle
+            new Setting(containerEl)
+                .setName('增量索引')
+                .setDesc('只索引修改过的文件 (基于 me_indexed_at)')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.enableIncrementalIndexing)
+                    .onChange(async (value) => {
+                        this.plugin.settings.enableIncrementalIndexing = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            // v0.6.0: Abstract concept extraction settings
+            containerEl.createEl('h4', { text: '🎯 v0.6.0 抽象概念提取' });
+
+            // Focus on abstract concepts
+            new Setting(containerEl)
+                .setName('专注于抽象概念')
+                .setDesc('提取通用设计模式而非具体技术名词 (如"幂等性"而非"Kafka")')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.focusOnAbstractConcepts)
+                    .onChange(async (value) => {
+                        this.plugin.settings.focusOnAbstractConcepts = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.conceptExtractor.updateConfig({ focusOnAbstractConcepts: value });
+                    }));
+
+            // Minimum concept confidence
+            new Setting(containerEl)
+                .setName('最小概念置信度')
+                .setDesc('只保留置信度高于此值的概念 (0.0-1.0)')
+                .addSlider(slider => slider
+                    .setLimits(0.1, 1.0, 0.1)
+                    .setValue(this.plugin.settings.minConceptConfidence)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.plugin.settings.minConceptConfidence = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.conceptExtractor.updateConfig({ minConfidence: value });
+                    }));
+
+            // Exclude generic concepts
+            new Setting(containerEl)
+                .setName('排除通用概念')
+                .setDesc('逗号分隔的通用概念列表，如"技术开发,总结,概述"')
+                .addText(text => text
+                    .setPlaceholder('技术开发,总结,概述,简介,设计')
+                    .setValue(this.plugin.settings.excludeGenericConcepts)
+                    .onChange(async (value) => {
+                        this.plugin.settings.excludeGenericConcepts = value;
+                        await this.plugin.saveSettings();
+                        const excludeList = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        this.plugin.conceptExtractor.updateConfig({ excludeGenericConcepts: excludeList });
+                    }));
+
+            // Clear all me_* fields button
+            new Setting(containerEl)
+                .setName('清除所有概念标记')
+                .setDesc('⚠️ 移除所有笔记中的 me_concepts 和 me_indexed_at 字段')
+                .addButton(button => button
+                    .setButtonText('清除所有')
+                    .setWarning()
+                    .onClick(async () => {
+                        const confirmed = confirm(
+                            '⚠️ 确定要清除所有笔记中的 me_* 字段吗?\n\n此操作会修改所有带有概念标记的笔记。'
+                        );
+
+                        if (confirmed) {
+                            try {
+                                new Notice('🔄 正在清除...');
+                                const result = await this.plugin.frontmatterService.clearAllMemoEchoFields();
+                                new Notice(`✅ 已清除 ${result.cleared} 个文件${result.failed > 0 ? `, ${result.failed} 个失败` : ''}`);
+                            } catch (error) {
+                                new Notice(`❌ 清除失败: ${error.message}`);
+                            }
+                        }
+                    }));
+
+            // v0.6.0: Clear recent concepts (last 7 days)
+            new Setting(containerEl)
+                .setName('清除最近添加的概念')
+                .setDesc('移除最近 7 天索引的笔记中的概念标记')
+                .addButton(button => button
+                    .setButtonText('清除最近')
+                    .onClick(async () => {
+                        try {
+                            const cutoffDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                            const recentFiles = await this.plugin.frontmatterService.getFilesIndexedAfter(cutoffDate);
+
+                            if (recentFiles.length === 0) {
+                                new Notice('没有最近添加的概念');
+                                return;
+                            }
+
+                            const confirmed = confirm(
+                                `确定要清除最近 7 天添加的概念吗?\n\n将影响 ${recentFiles.length} 个文件。`
+                            );
+
+                            if (!confirmed) return;
+
+                            new Notice('🔄 正在清除...');
+                            let cleared = 0;
+                            for (const file of recentFiles) {
+                                try {
+                                    await this.plugin.frontmatterService.clearMemoEchoFields(file);
+                                    cleared++;
+                                } catch (e) {
+                                    // Skip errors
+                                }
+                            }
+                            new Notice(`✅ 已清除 ${cleared} 个文件的概念`);
+                        } catch (error) {
+                            new Notice(`❌ 清除失败: ${error.message}`);
+                        }
+                    }));
+
+            // v0.6.0: Association management settings
+            containerEl.createEl('h4', { text: '🔗 关联发现 (v0.6.0)' });
+
+            const statsContainer = containerEl.createDiv('association-stats');
+            this.updateAssociationStats(statsContainer);
+
+            new Setting(containerEl)
+                .setName('自动扫描关联')
+                .setDesc('打开关联面板时自动扫描并发现关联')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.associationAutoScan)
+                    .onChange(async (value) => {
+                        this.plugin.settings.associationAutoScan = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('自动扫描批量上限')
+                .setDesc('自动扫描时最多处理的笔记数量')
+                .addSlider(slider => slider
+                    .setLimits(10, 200, 10)
+                    .setValue(this.plugin.settings.associationAutoScanBatchSize)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.plugin.settings.associationAutoScanBatchSize = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('最小关联置信度')
+                .setDesc('只显示置信度高于此值的关联 (0.0-1.0)')
+                .addSlider(slider => slider
+                    .setLimits(0.1, 1.0, 0.1)
+                    .setValue(this.plugin.settings.associationMinConfidence)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.plugin.settings.associationMinConfidence = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.associationEngine.updateConfig({ minConfidence: value });
+                        this.updateAssociationStats(statsContainer);
+                    }));
+
+            new Setting(containerEl)
+                .setName('自动接受高质量关联')
+                .setDesc('自动接受置信度高的关联并写入概念')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.associationAutoAccept)
+                    .onChange(async (value) => {
+                        this.plugin.settings.associationAutoAccept = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('自动接受阈值')
+                .setDesc('仅当关联置信度高于此值时自动接受 (0.0-1.0)')
+                .addSlider(slider => slider
+                    .setLimits(0.5, 1.0, 0.05)
+                    .setValue(this.plugin.settings.associationAutoAcceptConfidence)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.plugin.settings.associationAutoAcceptConfidence = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('重置忽略列表')
+                .setDesc('清空所有已忽略的关联')
+                .addButton(button => button
+                    .setButtonText('重置忽略')
+                    .onClick(async () => {
+                        await this.plugin.associationPreferences.clearIgnoredAssociations();
+                        new Notice('✅ 已清空忽略列表');
+                    }));
+
+            new Setting(containerEl)
+                .setName('重置删除概念')
+                .setDesc('清空所有已删除的共享概念')
+                .addButton(button => button
+                    .setButtonText('重置删除')
+                    .onClick(async () => {
+                        await this.plugin.associationPreferences.clearDeletedConcepts();
+                        new Notice('✅ 已清空删除概念');
+                    }));
+
+
+            // v0.6.0: Rescan associations button
+            new Setting(containerEl)
+                .setName('重新扫描关联')
+                .setDesc('清除关联索引并重新发现笔记间的关联')
+                .addButton(button => button
+                    .setButtonText('重新扫描')
+                    .setCta()
+                    .onClick(async () => {
+                        try {
+                            new Notice('🔄 正在扫描关联...');
+
+                            // Clear existing index
+                            this.plugin.associationEngine.clearIndex();
+
+                            // Re-index all markdown files (limit for performance)
+                            const limit = Math.max(10, this.plugin.settings.associationAutoScanBatchSize || 50);
+                            const files = this.app.vault.getMarkdownFiles().slice(0, limit);
+                            let indexed = 0;
+
+                            for (const file of files) {
+                                try {
+                                    const content = await this.app.vault.read(file);
+                                    await this.plugin.associationEngine.indexNote(file.path, content, file.basename);
+                                    indexed++;
+                                } catch (e) {
+                                    // Skip files with errors
+                                }
+                            }
+
+                            // Discover associations
+                            const raw = await this.plugin.associationEngine.discoverAssociations();
+                            const filtered = this.plugin.associationPreferences.filterAssociations(raw)
+                                .filter((assoc) => assoc.confidence >= this.plugin.settings.associationMinConfidence);
+
+                            new Notice(`✅ 已索引 ${indexed} 个笔记，发现 ${filtered.length} 个关联`);
+
+                            // Refresh stats display
+                            this.updateAssociationStats(statsContainer);
+                        } catch (error) {
+                            new Notice(`❌ 扫描失败: ${error.message}`);
+                        }
+                    }));
+
+            // v0.6.0: Export association stats
+            new Setting(containerEl)
+                .setName('导出关联统计')
+                .setDesc('导出当前关联统计和索引概览')
+                .addButton(button => button
+                    .setButtonText('导出统计')
+                    .onClick(async () => {
+                        try {
+                            const stats = this.plugin.associationEngine.getStats();
+                            const raw = await this.plugin.associationEngine.discoverAssociations();
+                            const filtered = this.plugin.associationPreferences.filterAssociations(raw)
+                                .filter((assoc) => assoc.confidence >= this.plugin.settings.associationMinConfidence);
+
+                            const payload = buildAssociationExport(filtered, stats, {
+                                filteredBy: `minConfidence:${this.plugin.settings.associationMinConfidence}`,
+                            });
+
+                            const fileName = `memo-echo-association-export-${Date.now()}.json`;
+                            await this.app.vault.create(fileName, JSON.stringify(payload, null, 2));
+                            new Notice(`✅ 已导出统计和关联到 ${fileName}`);
+                        } catch (error) {
+                            new Notice(`❌ 导出失败: ${error.message}`);
+                        }
+                    }));
+
+            // v0.6.0: Open association panel button
+            new Setting(containerEl)
+                .setName('打开关联面板')
+                .setDesc('在侧边栏查看和管理关联建议')
+                .addButton(button => button
+                    .setButtonText('打开面板')
+                    .onClick(() => {
+                        this.plugin.activateAssociationView();
+                    }));
+        }
+    }
+
     private addDatabaseActionsSection(containerEl: HTMLElement): void {
         containerEl.createEl('h3', { text: '📊 数据库管理' });
 
@@ -682,7 +937,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
                     if (confirmed) {
                         try {
-                            await this.plugin.vectorStore.clear();
+                            await this.plugin.vectorBackend.clear();
                             new Notice('✅ 数据库已清空');
                             this.display();
                         } catch (error) {
@@ -696,7 +951,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         container.empty();
 
         try {
-            const count = await this.plugin.vectorStore.count();
+            const count = await this.plugin.vectorBackend.count();
 
             const statsContent = container.createDiv('stats-content');
             statsContent.createEl('h4', { text: '数据库统计' });
@@ -714,6 +969,36 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         } catch (error) {
             container.createEl('p', {
                 text: `无法获取统计信息: ${error.message}`,
+                cls: 'error-text',
+            });
+        }
+    }
+
+    // v0.6.0: Update association statistics display
+    private updateAssociationStats(container: HTMLElement): void {
+        container.empty();
+
+        try {
+            const stats = this.plugin.associationEngine.getStats();
+
+            const statsContent = container.createDiv('stats-content');
+
+            const row1 = statsContent.createDiv('stat-row');
+            row1.createEl('span', { text: '已索引笔记: ' });
+            row1.createEl('strong', { text: stats.totalNotes.toString() });
+            row1.createEl('span', { text: ' | ' });
+            row1.createEl('span', { text: '唯一概念: ' });
+            row1.createEl('strong', { text: stats.totalConcepts.toString() });
+
+            const row2 = statsContent.createDiv('stat-row');
+            row2.createEl('span', { text: '发现关联: ' });
+            row2.createEl('strong', { text: stats.totalAssociations.toString() });
+            row2.createEl('span', { text: ' | ' });
+            row2.createEl('span', { text: '平均概念/笔记: ' });
+            row2.createEl('strong', { text: stats.avgConceptsPerNote.toFixed(1) });
+        } catch (error) {
+            container.createEl('p', {
+                text: '无法获取关联统计',
                 cls: 'error-text',
             });
         }

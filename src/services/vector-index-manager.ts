@@ -1,40 +1,44 @@
 /**
  * VectorIndexManager - Orchestrates indexing, caching, and persistence
- * v0.4.0: Supports Named Vectors (content_vec, summary_vec, title_vec)
+ * v0.5.0: Uses VectorBackend interface for multi-backend support
  */
 
 import { MemoryCache, CachedChunk } from './memory-cache';
 import { PersistQueue, MultiVectorQueuedChunk } from './persist-queue';
-import { VectorStore, SearchResult, VECTOR_NAMES } from './vector-store';
+import { VectorBackend, SearchResult, VECTOR_NAMES } from './vector-backend';
 import { EmbeddingService } from './embedding-service';
 import { Chunker, ChunkResult } from './chunker';
 import { MetadataExtractor } from './metadata-extractor';
+import { SimpleAssociationEngine } from './association-engine';
 
 export class VectorIndexManager {
     private memoryCache: MemoryCache;
     private persistQueue: PersistQueue;
-    private vectorStore: VectorStore;
+    private backend: VectorBackend;
     private embeddingService: EmbeddingService;
     private chunker: Chunker;
     private metadataExtractor: MetadataExtractor;
+    private associationEngine?: SimpleAssociationEngine; // v0.6.0: Optional association engine
 
     constructor(
-        vectorStore: VectorStore,
+        backend: VectorBackend,
         embeddingService: EmbeddingService,
         chunker: Chunker,
         metadataExtractor: MetadataExtractor,
-        cacheSize: number = 50 * 1024 * 1024 // 50MB default
+        cacheSize: number = 50 * 1024 * 1024, // 50MB default
+        associationEngine?: SimpleAssociationEngine // v0.6.0: Optional association engine
     ) {
-        this.vectorStore = vectorStore;
+        this.backend = backend;
         this.embeddingService = embeddingService;
         this.chunker = chunker;
         this.metadataExtractor = metadataExtractor;
+        this.associationEngine = associationEngine;
 
         this.memoryCache = new MemoryCache(cacheSize);
-        this.persistQueue = new PersistQueue(vectorStore, {
+        this.persistQueue = new PersistQueue(backend, {
             batchSize: 50,
             flushInterval: 30000,
-            useMultiVector: true, // v0.4.0
+            useMultiVector: true,
         });
     }
 
@@ -42,11 +46,36 @@ export class VectorIndexManager {
      * Index a file
      */
     async indexFile(filePath: string, content: string): Promise<void> {
+        console.log('[MemoEcho] Index start:', filePath);
+
         // Chunk the content
         const chunks = this.chunker.chunk(content);
+        console.log('[MemoEcho] Chunk count:', chunks.length, 'Content length:', content.length);
 
         for (const chunk of chunks) {
-            await this.indexChunk(filePath, chunk);
+            try {
+                if (chunks.length <= 3 || chunk.index === 0) {
+                    console.log('[MemoEcho] Indexing chunk', chunk.index, 'len', chunk.content.length, 'header', chunk.header_path || '');
+                }
+                await this.indexChunk(filePath, chunk);
+            } catch (error) {
+                console.error('[MemoEcho] Failed indexing chunk', chunk.index, 'for', filePath, error);
+                throw error;
+            }
+        }
+        console.log('[MemoEcho] Index finished:', filePath);
+
+        // v0.6.0: Update association engine if available
+        if (this.associationEngine) {
+            try {
+                // Extract title from file path (remove extension)
+                const title = filePath.split('/').pop()?.replace(/\.md$/, '') || filePath;
+
+                await this.associationEngine.indexNote(filePath, content, title);
+                console.log(`🔗 Updated association index for: ${filePath}`);
+            } catch (error) {
+                console.warn(`Failed to update association index for ${filePath}:`, error);
+            }
         }
     }
 
@@ -125,8 +154,8 @@ export class VectorIndexManager {
         // Search in cache
         const cacheResults = this.searchInCache(queryEmbedding, limit);
 
-        // Search in vector store with fusion (v0.4.0)
-        const storeResults = await this.vectorStore.searchWithFusion(queryEmbedding, {
+        // Search in vector store with fusion (v0.5.0)
+        const storeResults = await this.backend.searchWithFusion(queryEmbedding, {
             limit,
             filter: options.tags ? { tags: options.tags } : undefined,
         });
@@ -229,6 +258,16 @@ export class VectorIndexManager {
     removeFile(filePath: string): void {
         this.memoryCache.deleteByFilePath(filePath);
         this.persistQueue.removeByFilePath(filePath);
+        
+        // v0.6.0: Remove from association engine if available
+        if (this.associationEngine) {
+            try {
+                this.associationEngine.removeNote(filePath);
+                console.log(`🔗 Removed from association index: ${filePath}`);
+            } catch (error) {
+                console.warn(`Failed to remove from association index for ${filePath}:`, error);
+            }
+        }
     }
 
     /**

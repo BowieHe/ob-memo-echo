@@ -9,12 +9,18 @@ export const VIEW_TYPE_RECOMMENDATION = 'recommendation-view';
 
 export class RecommendationView extends ItemView {
     private indexManager: VectorIndexManager;
+    private onIndexCurrentFile: () => Promise<void>;
     private container: HTMLElement;
     private root: Root | null = null;
 
-    constructor(leaf: WorkspaceLeaf, indexManager: VectorIndexManager) {
+    constructor(
+        leaf: WorkspaceLeaf,
+        indexManager: VectorIndexManager,
+        onIndexCurrentFile: () => Promise<void>,
+    ) {
         super(leaf);
         this.indexManager = indexManager;
+        this.onIndexCurrentFile = onIndexCurrentFile;
     }
 
     getViewType(): string {
@@ -39,13 +45,16 @@ export class RecommendationView extends ItemView {
 
         // Listen for file open events from React
         window.addEventListener('memo-echo:open-file', this.handleOpenFile);
+        // Listen for index current file button click
+        window.addEventListener('memo-echo:index-current-file', this.handleIndexCurrentFile);
     }
 
     private renderReact() {
         this.root = createRoot(this.container);
         this.root.render(
             React.createElement(Sidebar, {
-                indexManager: this.indexManager
+                indexManager: this.indexManager,
+                onIndexCurrent: this.handleIndexCurrentFile, // Direct callback
             })
         );
     }
@@ -55,7 +64,15 @@ export class RecommendationView extends ItemView {
             this.root.unmount();
         }
         window.removeEventListener('memo-echo:open-file', this.handleOpenFile);
+        window.removeEventListener('memo-echo:index-current-file', this.handleIndexCurrentFile);
     }
+
+    /**
+     * Handle index current file button click
+     */
+    private handleIndexCurrentFile = async () => {
+        await this.onIndexCurrentFile();
+    };
 
     /**
      * Handle file open event from React

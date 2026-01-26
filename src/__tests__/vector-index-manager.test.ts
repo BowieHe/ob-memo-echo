@@ -1,31 +1,33 @@
 /**
- * Unit tests for VectorIndexManager (v0.2.0)
+ * Unit tests for VectorIndexManager (v0.5.0)
  * Tests orchestration of indexing, caching, and persistence
  */
 
 import { VectorIndexManager } from '../services/vector-index-manager';
 import { MemoryCache } from '../services/memory-cache';
 import { PersistQueue } from '../services/persist-queue';
-import { VectorStore } from '../services/vector-store';
+import { VectorBackend } from '../services/vector-backend';
 import { EmbeddingService } from '../services/embedding-service';
 import { Chunker } from '../services/chunker';
 import { MetadataExtractor } from '../services/metadata-extractor';
 
-describe('VectorIndexManager (v0.2.0)', () => {
+describe('VectorIndexManager (v0.5.0)', () => {
     let manager: VectorIndexManager;
-    let mockVectorStore: jest.Mocked<VectorStore>;
+    let mockBackend: jest.Mocked<VectorBackend>;
     let mockEmbeddingService: jest.Mocked<EmbeddingService>;
     let mockChunker: jest.Mocked<Chunker>;
     let mockMetadataExtractor: jest.Mocked<MetadataExtractor>;
 
     beforeEach(() => {
-        mockVectorStore = {
-            upsert: jest.fn(),
-            upsertBatch: jest.fn(),
-            upsertMultiVector: jest.fn(),
-            search: jest.fn(),
-            searchWithFusion: jest.fn(),
-        } as any;
+        mockBackend = {
+            initialize: jest.fn().mockResolvedValue(undefined),
+            upsertMultiVector: jest.fn().mockResolvedValue(undefined),
+            searchWithFusion: jest.fn().mockResolvedValue([]),
+            delete: jest.fn().mockResolvedValue(undefined),
+            deleteByFilePath: jest.fn().mockResolvedValue(undefined),
+            count: jest.fn().mockResolvedValue(0),
+            clear: jest.fn().mockResolvedValue(undefined),
+        };
 
         mockEmbeddingService = {
             embed: jest.fn(),
@@ -42,7 +44,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
         } as any;
 
         manager = new VectorIndexManager(
-            mockVectorStore,
+            mockBackend,
             mockEmbeddingService,
             mockChunker,
             mockMetadataExtractor
@@ -168,7 +170,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
             await manager.indexFile('/test.md', '# Test\n\nCached content');
 
             // Mock vector store results (v0.4.0: searchWithFusion)
-            mockVectorStore.searchWithFusion.mockResolvedValue([
+            mockBackend.searchWithFusion.mockResolvedValue([
                 {
                     id: 'persisted-chunk',
                     score: 0.9,
@@ -180,7 +182,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
 
             // Should combine cache and vector store results
             expect(results.length).toBeGreaterThan(0);
-            expect(mockVectorStore.searchWithFusion).toHaveBeenCalled();
+            expect(mockBackend.searchWithFusion).toHaveBeenCalled();
         });
 
         // TC-3.25: Deduplicate search results
@@ -191,7 +193,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
             mockEmbeddingService.embed.mockResolvedValue(queryEmbedding);
 
             // Same chunk in both cache and store
-            mockVectorStore.searchWithFusion.mockResolvedValue([
+            mockBackend.searchWithFusion.mockResolvedValue([
                 {
                     id: 'chunk-1',
                     score: 0.8,
@@ -220,7 +222,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
     describe('Persistence', () => {
         // TC-3.26: Persist queue on demand
         it('should persist queue on demand', async () => {
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+
 
             mockChunker.chunk.mockReturnValue([
                 {
@@ -250,13 +252,13 @@ describe('VectorIndexManager (v0.2.0)', () => {
 
             await manager.flush();
 
-            expect(mockVectorStore.upsertMultiVector).toHaveBeenCalled();
+            expect(mockBackend.upsertMultiVector).toHaveBeenCalled();
             expect(manager.getQueueSize()).toBe(0);
         });
 
         // TC-3.27: Auto-persist on file save
         it('should auto-persist on file save event', async () => {
-            mockVectorStore.upsertBatch.mockResolvedValue(undefined);
+
 
             mockChunker.chunk.mockReturnValue([
                 {
@@ -285,7 +287,7 @@ describe('VectorIndexManager (v0.2.0)', () => {
             // Simulate file save
             await manager.onFileSave('/test.md');
 
-            expect(mockVectorStore.upsertMultiVector).toHaveBeenCalled();
+            expect(mockBackend.upsertMultiVector).toHaveBeenCalled();
         });
     });
 

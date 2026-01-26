@@ -5,14 +5,16 @@ import { VectorIndexManager } from "../services/vector-index-manager";
 interface SidebarProps {
     indexManager: VectorIndexManager;
     initialMode?: "ambient" | "search";
+    onIndexCurrent?: () => void; // Direct callback for index button
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
     indexManager,
     initialMode = "ambient",
+    onIndexCurrent,
 }: SidebarProps) => {
     const [mode, setMode] = useState<"ambient" | "search">(
-        initialMode as "ambient" | "search"
+        initialMode as "ambient" | "search",
     );
     const [searchQuery, setSearchQuery] = useState("");
     const [ambientResults, setAmbientResults] = useState<SearchResult[]>([]);
@@ -34,12 +36,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         window.addEventListener(
             "memo-echo:ambient-update",
-            handleAmbientUpdate as EventListener
+            handleAmbientUpdate as EventListener,
         );
         return () =>
             window.removeEventListener(
                 "memo-echo:ambient-update",
-                handleAmbientUpdate as EventListener
+                handleAmbientUpdate as EventListener,
             );
     }, [mode]);
 
@@ -69,7 +71,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
 
     const handleIndexCurrent = () => {
-        window.dispatchEvent(new CustomEvent("memo-echo:index-current-file"));
+        console.log("Index button clicked, onIndexCurrent:", onIndexCurrent);
+        console.log("typeof onIndexCurrent:", typeof onIndexCurrent);
+        if (onIndexCurrent) {
+            console.log("Calling onIndexCurrent...");
+            onIndexCurrent();
+            console.log("onIndexCurrent called");
+        } else {
+            console.log("onIndexCurrent is falsy, falling back to event");
+            // Fallback to event for backward compatibility
+            window.dispatchEvent(
+                new CustomEvent("memo-echo:index-current-file"),
+            );
+        }
     };
 
     return (
@@ -167,7 +181,7 @@ const SmartCard: React.FC<{ result: SearchResult }> = ({
             onClick={() => {
                 // Trigger file open logic
                 window.dispatchEvent(
-                    new CustomEvent("memo-echo:open-file", { detail: result })
+                    new CustomEvent("memo-echo:open-file", { detail: result }),
                 );
             }}
         >

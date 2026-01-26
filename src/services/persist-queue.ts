@@ -1,9 +1,9 @@
 /**
  * PersistQueue - Batch persistence queue with deduplication
- * v0.4.0: Supports multi-vector items
+ * v0.5.0: Uses VectorBackend interface for multi-backend support
  */
 
-import { VectorStore, VectorItem, MultiVectorItem, VECTOR_NAMES } from './vector-store';
+import { VectorBackend, MultiVectorItem, VECTOR_NAMES } from './vector-backend';
 
 // Legacy single-vector queued chunk
 export interface QueuedChunk {
@@ -39,7 +39,7 @@ export interface QueueStats {
 export class PersistQueue {
     private queue: Map<string, QueuedChunk>; // Legacy
     private multiVectorQueue: Map<string, MultiVectorQueuedChunk>; // v0.4.0
-    private vectorStore: VectorStore;
+    private backend: VectorBackend;
     private batchSize: number;
     private flushInterval: number;
     private flushTimer: NodeJS.Timeout | null = null;
@@ -47,10 +47,10 @@ export class PersistQueue {
     private useMultiVector: boolean;
 
     constructor(
-        vectorStore: VectorStore,
+        backend: VectorBackend,
         config: PersistQueueConfig = {}
     ) {
-        this.vectorStore = vectorStore;
+        this.backend = backend;
         this.queue = new Map();
         this.multiVectorQueue = new Map();
         this.batchSize = config.batchSize || 50;
@@ -157,9 +157,21 @@ export class PersistQueue {
     }
 
     /**
-     * Flush legacy queue to vector store
+     * Flush queue to vector store
+     * Uses legacy or multi-vector mode based on configuration
      */
     async flush(): Promise<void> {
+        if (this.useMultiVector) {
+            await this.flushMultiVector();
+        } else {
+            await this.flushLegacy();
+        }
+    }
+
+    /**
+     * Flush legacy queue to vector store
+     */
+    private async flushLegacy(): Promise<void> {
         if (this.queue.size === 0) {
             return;
         }
@@ -167,14 +179,18 @@ export class PersistQueue {
         const chunks = Array.from(this.queue.values());
 
         try {
-            // Convert to VectorItems
-            const items: VectorItem[] = chunks.map(chunk => ({
-                id: chunk.id,
-                vector: chunk.vector,
-                metadata: chunk.metadata,
-            }));
-
-            await this.vectorStore.upsertBatch(items);
+            // Convert legacy chunks to multi-vector format and upsert
+            for (const chunk of chunks) {
+                await this.backend.upsertMultiVector({
+                    id: chunk.id,
+                    vectors: {
+                        content_vec: chunk.vector,
+                        summary_vec: chunk.vector, // Use same vector for all in legacy mode
+                        title_vec: chunk.vector,
+                    },
+                    metadata: chunk.metadata,
+                });
+            }
 
             // Update stats
             this.stats.totalFlushed += chunks.length;
@@ -184,7 +200,7 @@ export class PersistQueue {
             this.queue.clear();
         } catch (error) {
             this.stats.failedFlushes++;
-            throw error; // Re-throw to allow caller to handle
+            throw error;
         }
     }
 
@@ -201,7 +217,7 @@ export class PersistQueue {
         try {
             // Upsert each multi-vector item
             for (const chunk of chunks) {
-                await this.vectorStore.upsertMultiVector({
+                await this.backend.upsertMultiVector({
                     id: chunk.id,
                     vectors: chunk.vectors,
                     metadata: chunk.metadata,
