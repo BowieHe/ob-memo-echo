@@ -11,6 +11,8 @@ import { SimpleAssociationEngine, NoteAssociation } from './services/association
 import { AssociationPreferences } from './services/association-preferences';
 import type { MemoEchoSettings } from './settings';
 import { FrontmatterService } from './services/frontmatter-service';
+import { extractWikilinkConcepts } from './utils/wikilink-utils';
+import { ConceptCacheService } from './services/concept-cache-service';
 
 export const VIEW_TYPE_ASSOCIATION = 'association-view';
 
@@ -21,6 +23,7 @@ export class AssociationView extends ItemView {
     private frontmatterService: FrontmatterService;
     private associationPreferences: AssociationPreferences;
     private getSettings: () => MemoEchoSettings;
+    private conceptCacheService: ConceptCacheService;
 
     // State
     private associations: NoteAssociation[] = [];
@@ -38,6 +41,7 @@ export class AssociationView extends ItemView {
         this.frontmatterService = frontmatterService;
         this.associationPreferences = associationPreferences;
         this.getSettings = getSettings;
+        this.conceptCacheService = new ConceptCacheService(this.app);
     }
 
     getViewType(): string {
@@ -60,8 +64,7 @@ export class AssociationView extends ItemView {
         // Initial render
         this.renderReact();
 
-        // Discover associations on open
-        await this.refreshAssociations();
+        await this.refreshAssociations({ scan: false });
     }
 
     async onClose(): Promise<void> {
@@ -86,7 +89,7 @@ export class AssociationView extends ItemView {
                 onDeleteConcept: this.handleDeleteConcept,
                 onAcceptAll: this.handleAcceptAll,
                 onClearRecent: this.handleClearRecent,
-                onRefresh: this.refreshAssociations,
+                onRefresh: this.handleManualScan,
                 onOpenFile: this.handleOpenFile,
             })
         );
@@ -95,32 +98,22 @@ export class AssociationView extends ItemView {
     /**
      * Refresh associations from the engine
      */
-    private refreshAssociations = async (): Promise<void> => {
+    private refreshAssociations = async (options: { scan: boolean }): Promise<void> => {
         this.isLoading = true;
         this.renderReact();
 
         try {
-            // First, index all files if not already indexed
             const files = this.app.vault.getMarkdownFiles();
             const stats = this.associationEngine.getStats();
             const settings = this.getSettings();
 
-            // If we have very few indexed notes, do a quick index
-            if (settings.associationAutoScan && stats.totalNotes < files.length * 0.5) {
-                new Notice('🔄 正在索引笔记...');
-
-                const limit = Math.max(10, settings.associationAutoScanBatchSize || 50);
-                for (const file of files.slice(0, limit)) { // Limit for performance
-                    try {
-                        const content = await this.app.vault.read(file);
-                        await this.associationEngine.indexNote(file.path, content, file.basename);
-                    } catch (e) {
-                        // Skip files with errors
-                    }
-                }
-            } else if (!settings.associationAutoScan && stats.totalNotes === 0) {
+            if (!options.scan && stats.totalNotes === 0) {
                 this.associations = [];
                 return;
+            }
+
+            if (options.scan) {
+                await this.scanAllFiles(files, settings.associationAutoScanBatchSize || 50);
             }
 
             // Discover associations
@@ -159,6 +152,66 @@ export class AssociationView extends ItemView {
         }
     };
 
+    private handleManualScan = async (): Promise<void> => {
+        await this.refreshAssociations({ scan: true });
+    };
+
+    private async scanAllFiles(files: TFile[], batchSize: number): Promise<void> {
+        const safeBatchSize = Math.max(5, batchSize || 50);
+        new Notice('🔄 正在扫描关联...');
+
+        const cache = await this.conceptCacheService.load();
+
+        for (let i = 0; i < files.length; i += safeBatchSize) {
+            const batch = files.slice(i, i + safeBatchSize);
+
+            for (const file of batch) {
+                try {
+                    const existing = cache.notes[file.path];
+                    if (existing && existing.mtime === file.stat.mtime) {
+                        continue;
+                    }
+
+                    const concepts = await this.getConceptsForFile(file);
+                    if (concepts.length === 0) {
+                        delete cache.notes[file.path];
+                        continue;
+                    }
+
+                    cache.notes[file.path] = {
+                        mtime: file.stat.mtime,
+                        concepts,
+                    };
+                } catch (error) {
+                    // Skip files with errors
+                }
+            }
+        }
+
+        cache.concepts = this.conceptCacheService.rebuildConceptIndex(cache.notes);
+        cache.updatedAt = new Date().toISOString();
+        await this.conceptCacheService.save(cache);
+
+        this.associationEngine.clearIndex();
+        for (const [noteId, entry] of Object.entries(cache.notes)) {
+            this.associationEngine.indexNoteConcepts(noteId, entry.concepts);
+        }
+
+        new Notice('✅ 扫描完成');
+    }
+
+    private async getConceptsForFile(file: TFile): Promise<string[]> {
+        const fields = await this.frontmatterService.readMemoEchoFields(file);
+        const frontmatterConcepts = fields.me_concepts
+            ? extractWikilinkConcepts(fields.me_concepts.join(' '))
+            : [];
+
+        const content = await this.app.vault.read(file);
+        const linkedConcepts = extractWikilinkConcepts(content);
+
+        return Array.from(new Set([...frontmatterConcepts, ...linkedConcepts]));
+    }
+
     /**
      * Accept an association - inject concept wikilinks to both notes
      */
@@ -176,6 +229,11 @@ export class AssociationView extends ItemView {
             const sourceConcepts = (await this.frontmatterService.readMemoEchoFields(sourceFile)).me_concepts || [];
             const targetConcepts = (await this.frontmatterService.readMemoEchoFields(targetFile)).me_concepts || [];
 
+            const sourceContent = await this.app.vault.read(sourceFile);
+            const targetContent = await this.app.vault.read(targetFile);
+            const sourceLinked = new Set(extractWikilinkConcepts(sourceContent));
+            const targetLinked = new Set(extractWikilinkConcepts(targetContent));
+
             // Extract concept names from wikilinks
             const extractName = (wikilink: string) => {
                 const match = wikilink.match(/\[\[.*\/(.+)\]\]/);
@@ -186,8 +244,11 @@ export class AssociationView extends ItemView {
             const existingTargetConcepts = targetConcepts.map(extractName);
 
             // Add new shared concepts
-            const newSourceConcepts = [...new Set([...existingSourceConcepts, ...association.sharedConcepts])];
-            const newTargetConcepts = [...new Set([...existingTargetConcepts, ...association.sharedConcepts])];
+            const sourceCandidates = association.sharedConcepts.filter((concept) => !sourceLinked.has(concept));
+            const targetCandidates = association.sharedConcepts.filter((concept) => !targetLinked.has(concept));
+
+            const newSourceConcepts = [...new Set([...existingSourceConcepts, ...sourceCandidates])];
+            const newTargetConcepts = [...new Set([...existingTargetConcepts, ...targetCandidates])];
 
             // Update frontmatter
             await this.frontmatterService.setConcepts(sourceFile, newSourceConcepts);
@@ -317,7 +378,7 @@ export class AssociationView extends ItemView {
             new Notice(`✅ 已清除 ${cleared} 个文件的概念`);
 
             // Refresh associations
-            await this.refreshAssociations();
+            await this.refreshAssociations({ scan: false });
 
         } catch (error) {
             console.error('Failed to clear recent:', error);

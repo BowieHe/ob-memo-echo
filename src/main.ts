@@ -1,6 +1,5 @@
-import { Plugin, MarkdownView } from 'obsidian';
-import { SemanticSearchView, VIEW_TYPE_SEMANTIC_SEARCH } from './search-view';
-import { RecommendationView, VIEW_TYPE_RECOMMENDATION } from './recommendation-view';
+import { Plugin } from 'obsidian';
+import { UnifiedSearchView, VIEW_TYPE_UNIFIED_SEARCH } from './unified-search-view';
 import { AssociationView, VIEW_TYPE_ASSOCIATION } from './association-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
@@ -16,8 +15,7 @@ import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
 
 export default class MemoEchoPlugin extends Plugin {
-    private searchView: SemanticSearchView | null = null;
-    private recommendationView: RecommendationView | null = null;
+    private unifiedSearchView: UnifiedSearchView | null = null;
     private associationView: AssociationView | null = null;
 
     // Settings
@@ -132,29 +130,16 @@ export default class MemoEchoPlugin extends Plugin {
         );
         console.log('📝 Frontmatter service initialized');
 
-        // Register the search view
+        // Register the unified search view (combines search + recommendations)
         this.registerView(
-            VIEW_TYPE_SEMANTIC_SEARCH,
+            VIEW_TYPE_UNIFIED_SEARCH,
             (leaf) => {
-                this.searchView = new SemanticSearchView(
+                this.unifiedSearchView = new UnifiedSearchView(
                     leaf,
                     this.indexManager,
                     this.indexCurrentFileWithConcepts,
                 );
-                return this.searchView;
-            }
-        );
-
-        // v0.2.0: Register recommendation view
-        this.registerView(
-            VIEW_TYPE_RECOMMENDATION,
-            (leaf) => {
-                this.recommendationView = new RecommendationView(
-                    leaf,
-                    this.indexManager,
-                    this.indexCurrentFileWithConcepts,
-                );
-                return this.recommendationView;
+                return this.unifiedSearchView;
             }
         );
 
@@ -173,14 +158,9 @@ export default class MemoEchoPlugin extends Plugin {
             }
         );
 
-        // Add ribbon icon for search
-        this.addRibbonIcon('search', '语义搜索', () => {
-            this.activateView();
-        });
-
-        // v0.2.0: Add ribbon icon for recommendations
-        this.addRibbonIcon('links', '相关推荐', () => {
-            this.activateRecommendationView();
+        // Add ribbon icon for unified search (search + recommendations)
+        this.addRibbonIcon('search', '检索', () => {
+            this.activateUnifiedSearchView();
         });
 
         // v0.6.0: Add ribbon icon for associations
@@ -188,21 +168,12 @@ export default class MemoEchoPlugin extends Plugin {
             this.activateAssociationView();
         });
 
-        // Add command to open search view
+        // Add command to open unified search view
         this.addCommand({
-            id: 'open-semantic-search',
-            name: '打开语义搜索',
+            id: 'open-unified-search',
+            name: '打开检索',
             callback: () => {
-                this.activateView();
-            },
-        });
-
-        // v0.2.0: Add command to open recommendation view
-        this.addCommand({
-            id: 'open-recommendations',
-            name: '打开相关推荐',
-            callback: () => {
-                this.activateRecommendationView();
+                this.activateUnifiedSearchView();
             },
         });
 
@@ -233,43 +204,21 @@ export default class MemoEchoPlugin extends Plugin {
             this.indexManager.stop();
         }
 
-        this.app.workspace.detachLeavesOfType(VIEW_TYPE_SEMANTIC_SEARCH);
-        this.app.workspace.detachLeavesOfType(VIEW_TYPE_RECOMMENDATION);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_UNIFIED_SEARCH);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_ASSOCIATION);
     }
 
-    async activateView() {
+    async activateUnifiedSearchView() {
         const { workspace } = this.app;
 
-        let leaf = workspace.getLeavesOfType(VIEW_TYPE_SEMANTIC_SEARCH)[0];
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_UNIFIED_SEARCH)[0];
 
         if (!leaf) {
             // Create new view in right sidebar
             const rightLeaf = workspace.getRightLeaf(false);
             if (rightLeaf) {
                 await rightLeaf.setViewState({
-                    type: VIEW_TYPE_SEMANTIC_SEARCH,
-                    active: true,
-                });
-                leaf = rightLeaf;
-            }
-        }
-
-        if (leaf) {
-            workspace.revealLeaf(leaf);
-        }
-    }
-
-    async activateRecommendationView() {
-        const { workspace } = this.app;
-
-        let leaf = workspace.getLeavesOfType(VIEW_TYPE_RECOMMENDATION)[0];
-
-        if (!leaf) {
-            const rightLeaf = workspace.getRightLeaf(false);
-            if (rightLeaf) {
-                await rightLeaf.setViewState({
-                    type: VIEW_TYPE_RECOMMENDATION,
+                    type: VIEW_TYPE_UNIFIED_SEARCH,
                     active: true,
                 });
                 leaf = rightLeaf;
@@ -349,9 +298,9 @@ export default class MemoEchoPlugin extends Plugin {
             minChars: 100,
             debounceMs: 1000,
             onParagraphComplete: async (event) => {
-                // Update recommendations
-                if (this.recommendationView) {
-                    await this.recommendationView.updateRecommendations(event.content);
+                // Update recommendations in unified search view
+                if (this.unifiedSearchView) {
+                    await this.unifiedSearchView.updateRecommendations(event.content);
                 }
             },
         });

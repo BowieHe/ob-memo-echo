@@ -36,7 +36,6 @@ export interface MemoEchoSettings {
     excludeGenericConcepts: string;    // Comma-separated list of generic concepts to exclude
 
     // v0.6.0: Association management settings
-    associationAutoScan: boolean;              // Auto scan associations on view open
     associationMinConfidence: number;          // Minimum confidence to display
     associationAutoAccept: boolean;            // Auto-accept high confidence associations
     associationAutoAcceptConfidence: number;   // Threshold for auto-accept
@@ -72,7 +71,6 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
     excludeGenericConcepts: '技术开发,总结,概述,简介,设计',
 
     // v0.6.0 association defaults
-    associationAutoScan: true,
     associationMinConfidence: 0.5,
     associationAutoAccept: false,
     associationAutoAcceptConfidence: 0.9,
@@ -94,35 +92,46 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: '向量搜索设置' });
+        containerEl.createEl('h2', { text: 'Memo Echo 设置' });
 
-        // Service Status Section
-        this.addServiceStatusSection(containerEl);
-
-        // Indexing Section (NEW!)
-        this.addIndexingSection(containerEl);
-
-        // Embedding Provider Section
-        this.addEmbeddingSection(containerEl);
-
-        // AI Generation Section (NEW!)
+        this.addOverviewSection(containerEl);
+        this.addEnvironmentSection(containerEl);
         this.addAiGenerationSection(containerEl);
-
-        // Qdrant Section
-        this.addQdrantSection(containerEl);
-
-        // v0.5.0: Concept Injection Section
         this.addConceptSection(containerEl);
-
-        // Database Actions Section
+        this.addIndexingSection(containerEl);
         this.addDatabaseActionsSection(containerEl);
     }
 
+    private addOverviewSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '概览' });
+
+        const overviewGrid = containerEl.createDiv('overview-grid');
+
+        const dbStatsCard = overviewGrid.createDiv('overview-card');
+        this.updateStats(dbStatsCard);
+
+        const associationCard = overviewGrid.createDiv('overview-card');
+        associationCard.createEl('h4', { text: '关联统计' });
+        const associationContainer = associationCard.createDiv('association-stats');
+        this.updateAssociationStats(associationContainer);
+    }
+
+    private addEnvironmentSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '环境配置' });
+
+        const group = containerEl.createDiv('memo-echo-settings-group');
+        this.addServiceStatusSection(group);
+        this.addQdrantSection(group);
+        this.addEmbeddingSection(group);
+    }
+
     private addIndexingSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '📚 索引管理' });
+        containerEl.createEl('h3', { text: '索引管理' });
+
+        const group = containerEl.createDiv('memo-echo-settings-group');
 
         // Index current file
-        new Setting(containerEl)
+        new Setting(group)
             .setName('索引当前文件')
             .setDesc('索引当前打开的 Markdown 文件')
             .addButton(button => button
@@ -133,7 +142,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 }));
 
         // Sync all files
-        new Setting(containerEl)
+        new Setting(group)
             .setName('同步所有文档')
             .setDesc('增量同步整个 Vault (只索引新文件和已修改的文件)')
             .addButton(button => button
@@ -257,7 +266,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
     }
 
     private addServiceStatusSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '🔌 服务状态' });
+        containerEl.createEl('h4', { text: '连接状态' });
 
         const statusContainer = containerEl.createDiv('stats-container');
 
@@ -279,7 +288,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
     }
 
     private addEmbeddingSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '🤖 Embedding 模型设置 (搜索)' });
+        containerEl.createEl('h4', { text: 'Embedding 设置' });
 
         // Provider selection
         new Setting(containerEl)
@@ -390,10 +399,12 @@ export class MemoEchoSettingTab extends PluginSettingTab {
     }
 
     private addAiGenerationSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '📝 AI 智能提取设置 (总结/标签)' });
+        containerEl.createEl('h3', { text: 'AI 总结与标签' });
+
+        const group = containerEl.createDiv('memo-echo-settings-group');
 
         // Toggle
-        new Setting(containerEl)
+        new Setting(group)
             .setName('启用 AI 智能提取')
             .setDesc('使用 LLM 模型自动生成文档总结、分类和标签。关闭将使用基于规则的快速提取。')
             .addToggle(toggle => toggle
@@ -413,7 +424,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         }
 
         // Provider selection
-        new Setting(containerEl)
+        new Setting(group)
             .setName('AI 提取提供商')
             .setDesc('选择用于生成总结的 AI 服务 (可与 Embedding 不同)')
             .addDropdown(dropdown => dropdown
@@ -431,7 +442,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         // Ollama Generation Settings
         if (this.plugin.settings.aiGenProvider === 'ollama') {
-            new Setting(containerEl)
+            new Setting(group)
                 .setName('Ollama API URL')
                 .setDesc('Ollama 服务地址 (本地默认 http://localhost:11434)')
                 .addText(text => text
@@ -447,7 +458,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         // but let's leave it for manual refresh or next open to avoid flicker text input
                     }));
 
-            const genModelSetting = new Setting(containerEl)
+            const genModelSetting = new Setting(group)
                 .setName('Ollama 生成模型')
                 .setDesc('用于提取元数据的对话模型 (切勿选择 Embedding 模型)');
 
@@ -497,7 +508,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         // OpenAI Generation Settings
         if (this.plugin.settings.aiGenProvider === 'openai') {
-            new Setting(containerEl)
+            new Setting(group)
                 .setName('OpenAI API Key')
                 .setDesc('OpenAI-compatible 服务的 API Key (本地 Ollama 可留空)')
                 .addText(text => text
@@ -511,7 +522,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         }
                     }));
 
-            new Setting(containerEl)
+            new Setting(group)
                 .setName('OpenAI URL (Base URL)')
                 .setDesc('OpenAI-compatible API 地址 (如 https://api.deepseek.com/v1)')
                 .addText(text => text
@@ -525,7 +536,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         }
                     }));
 
-            new Setting(containerEl)
+            new Setting(group)
                 .setName('模型名称')
                 .setDesc('例如: gpt-3.5-turbo, deepseek-chat')
                 .addText(text => text
@@ -541,7 +552,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
     }
 
     private addQdrantSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '🗄️ Qdrant 设置' });
+        containerEl.createEl('h4', { text: 'Qdrant 设置' });
 
         new Setting(containerEl)
             .setName('Qdrant URL')
@@ -568,12 +579,15 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
     // v0.5.0: Concept Injection Settings Section
     private addConceptSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '💡 概念注入 (v0.5.0)' });
+        containerEl.createEl('h3', { text: '知识图谱' });
+        containerEl.createEl('h4', { text: '概念注入' });
+
+        const conceptGroup = containerEl.createDiv('memo-echo-settings-group');
 
         // Enable concept injection toggle
-        new Setting(containerEl)
+        new Setting(conceptGroup)
             .setName('启用概念注入')
-            .setDesc('将 AI 提取的概念写入笔记 frontmatter')
+            .setDesc('写入 frontmatter（me_concepts）')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.injectConcepts)
                 .onChange(async (value) => {
@@ -584,9 +598,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         if (this.plugin.settings.injectConcepts) {
             // Concept extraction provider
-            new Setting(containerEl)
+            new Setting(conceptGroup)
                 .setName('概念提取方式')
-                .setDesc('使用 AI 或规则提取概念')
+                .setDesc('AI 或规则提取')
                 .addDropdown(dropdown => dropdown
                     .addOption('ollama', 'Ollama (推荐)')
                     .addOption('openai', 'OpenAI')
@@ -599,17 +613,19 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // Concept page folder
-            new Setting(containerEl)
+            new Setting(conceptGroup)
                 .setName('概念页前缀')
-                .setDesc('固定为 _me，用于生成 [[_me/概念]] 链接');
+                .setDesc('固定为 _me，用于生成 [[_me/概念]]');
 
             // v0.6.0: Abstract concept extraction settings
-            containerEl.createEl('h4', { text: '🎯 v0.6.0 抽象概念提取' });
+            containerEl.createEl('h4', { text: '抽象概念提取' });
+
+            const abstractGroup = containerEl.createDiv('memo-echo-settings-group');
 
             // Focus on abstract concepts
-            new Setting(containerEl)
+            new Setting(abstractGroup)
                 .setName('专注于抽象概念')
-                .setDesc('提取通用设计模式而非具体技术名词 (如"幂等性"而非"Kafka")')
+                .setDesc('更偏模式/原理，而非技术名词')
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.focusOnAbstractConcepts)
                     .onChange(async (value) => {
@@ -619,9 +635,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // Minimum concept confidence
-            new Setting(containerEl)
+            new Setting(abstractGroup)
                 .setName('最小概念置信度')
-                .setDesc('只保留置信度高于此值的概念 (0.0-1.0)')
+                .setDesc('过滤低置信度概念')
                 .addSlider(slider => slider
                     .setLimits(0.1, 1.0, 0.1)
                     .setValue(this.plugin.settings.minConceptConfidence)
@@ -633,9 +649,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // Exclude generic concepts
-            new Setting(containerEl)
+            new Setting(abstractGroup)
                 .setName('排除通用概念')
-                .setDesc('逗号分隔的通用概念列表，如"技术开发,总结,概述"')
+                .setDesc('逗号分隔，如 总结,概述')
                 .addText(text => text
                     .setPlaceholder('技术开发,总结,概述,简介,设计')
                     .setValue(this.plugin.settings.excludeGenericConcepts)
@@ -647,9 +663,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // Clear all me_* fields button
-            new Setting(containerEl)
+            new Setting(abstractGroup)
                 .setName('清除所有概念标记')
-                .setDesc('⚠️ 移除所有笔记中的 me_concepts 和 me_indexed_at 字段')
+                .setDesc('移除所有笔记的 me_* 字段')
                 .addButton(button => button
                     .setButtonText('清除所有')
                     .setWarning()
@@ -670,9 +686,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // v0.6.0: Clear recent concepts (last 7 days)
-            new Setting(containerEl)
+            new Setting(abstractGroup)
                 .setName('清除最近添加的概念')
-                .setDesc('移除最近 7 天索引的笔记中的概念标记')
+                .setDesc('移除最近 7 天的概念标记')
                 .addButton(button => button
                     .setButtonText('清除最近')
                     .onClick(async () => {
@@ -708,24 +724,16 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // v0.6.0: Association management settings
-            containerEl.createEl('h4', { text: '🔗 关联发现 (v0.6.0)' });
+            containerEl.createEl('h4', { text: '关联发现' });
 
-            const statsContainer = containerEl.createDiv('association-stats');
+            const associationGroup = containerEl.createDiv('memo-echo-settings-group');
+
+            const statsContainer = associationGroup.createDiv('association-stats');
             this.updateAssociationStats(statsContainer);
 
-            new Setting(containerEl)
-                .setName('自动扫描关联')
-                .setDesc('打开关联面板时自动扫描并发现关联')
-                .addToggle(toggle => toggle
-                    .setValue(this.plugin.settings.associationAutoScan)
-                    .onChange(async (value) => {
-                        this.plugin.settings.associationAutoScan = value;
-                        await this.plugin.saveSettings();
-                    }));
-
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('自动接受高质量关联')
-                .setDesc('自动接受置信度高的关联并写入概念')
+                .setDesc('高置信度自动写入')
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.associationAutoAccept)
                     .onChange(async (value) => {
@@ -733,11 +741,11 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
 
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('高级选项')
-                .setDesc('关联阈值与扫描批量使用默认值');
+                .setDesc('阈值与批量采用默认值');
 
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('重置忽略列表')
                 .setDesc('清空所有已忽略的关联')
                 .addButton(button => button
@@ -747,7 +755,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         new Notice('✅ 已清空忽略列表');
                     }));
 
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('重置删除概念')
                 .setDesc('清空所有已删除的共享概念')
                 .addButton(button => button
@@ -827,7 +835,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // v0.6.0: Open association panel button
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('打开关联面板')
                 .setDesc('在侧边栏查看和管理关联建议')
                 .addButton(button => button
@@ -839,14 +847,12 @@ export class MemoEchoSettingTab extends PluginSettingTab {
     }
 
     private addDatabaseActionsSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: '📊 数据库管理' });
+        containerEl.createEl('h3', { text: '数据库管理' });
 
-        // Database stats
-        const statsContainer = containerEl.createDiv('stats-container');
-        this.updateStats(statsContainer);
+        const group = containerEl.createDiv('memo-echo-settings-group');
 
         // Clear database button
-        new Setting(containerEl)
+        new Setting(group)
             .setName('清空数据库')
             .setDesc('⚠️ 删除所有已索引的向量数据 (不可撤销!)')
             .addButton(button => button

@@ -58,9 +58,7 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     const handleAcceptAll = useCallback(async () => {
         setProcessingIds(
             new Set(
-                associations.map(
-                    (a) => `${a.sourceNoteId}-${a.targetNoteId}`,
-                ),
+                associations.map((a) => `${a.sourceNoteId}-${a.targetNoteId}`),
             ),
         );
         try {
@@ -146,6 +144,40 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     );
 };
 
+/**
+ * ConceptBadge - Markdown-style code formatted concept with hover delete
+ */
+interface ConceptBadgeProps {
+    concept: string;
+    onDelete: () => void;
+}
+
+const ConceptBadge: React.FC<ConceptBadgeProps> = ({ concept, onDelete }) => {
+    const [showDelete, setShowDelete] = React.useState(false);
+
+    return (
+        <span
+            className="memo-echo-concept-badge"
+            onMouseEnter={() => setShowDelete(true)}
+            onMouseLeave={() => setShowDelete(false)}
+        >
+            <code>{concept}</code>
+            {showDelete && (
+                <button
+                    className="memo-echo-concept-delete-btn"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                    }}
+                    title={`删除 ${concept}`}
+                >
+                    ×
+                </button>
+            )}
+        </span>
+    );
+};
+
 interface AssociationCardProps {
     association: NoteAssociation;
     isProcessing: boolean;
@@ -172,7 +204,7 @@ const AssociationCard: React.FC<AssociationCardProps> = ({
         association.targetNoteId.split("/").pop()?.replace(".md", "") ||
         association.targetNoteId;
 
-    const confidencePercent = Math.round(association.confidence * 100);
+    const confidenceDecimal = association.confidence.toFixed(2);
 
     return (
         <div
@@ -180,6 +212,12 @@ const AssociationCard: React.FC<AssociationCardProps> = ({
         >
             <div className="memo-echo-card-header">
                 <div className="memo-echo-note-pair">
+                    <span
+                        className="memo-echo-confidence-badge"
+                        title="关联置信度"
+                    >
+                        {confidenceDecimal}
+                    </span>
                     <span
                         className="memo-echo-note-link"
                         onClick={() => onOpenFile(association.sourceNoteId)}
@@ -196,48 +234,41 @@ const AssociationCard: React.FC<AssociationCardProps> = ({
                         {targetTitle}
                     </span>
                 </div>
-                <span className="memo-echo-confidence-badge" title="关联置信度">
-                    {confidencePercent}%
-                </span>
             </div>
 
             <div className="memo-echo-shared-concepts">
-                <span className="memo-echo-concepts-label">共享概念：</span>
-                {association.sharedConcepts.map((concept) => (
-                    <span key={concept} className="memo-echo-concept-tag">
-                        {concept}
-                        <button
-                            className="memo-echo-concept-delete"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteConcept(concept);
-                            }}
-                            title="删除此概念"
-                        >
-                            ×
-                        </button>
-                    </span>
-                ))}
-            </div>
-
-            <div className="memo-echo-card-actions">
-                <button
-                    className="memo-echo-btn memo-echo-btn-small memo-echo-btn-success"
-                    onClick={onAccept}
-                    disabled={isProcessing}
-                >
-                    {isProcessing ? "处理中..." : "接受"}
-                </button>
-                <button
-                    className="memo-echo-btn memo-echo-btn-small"
-                    onClick={onIgnore}
-                    disabled={isProcessing}
-                >
-                    忽略
-                </button>
+                <div className="memo-echo-concepts-content">
+                    {association.sharedConcepts.length > 0 && (
+                        <>
+                            {association.sharedConcepts.map((concept) => (
+                                <ConceptBadge
+                                    key={concept}
+                                    concept={concept}
+                                    onDelete={() => onDeleteConcept(concept)}
+                                />
+                            ))}
+                        </>
+                    )}
+                </div>
+                <div className="memo-echo-card-actions-right">
+                    <button
+                        className="memo-echo-action-btn memo-echo-action-accept"
+                        onClick={onAccept}
+                        disabled={isProcessing}
+                        title="接受此关联"
+                    >
+                        ✓
+                    </button>
+                    <button
+                        className="memo-echo-action-btn memo-echo-action-ignore"
+                        onClick={onIgnore}
+                        disabled={isProcessing}
+                        title="忽略此关联"
+                    >
+                        ✕
+                    </button>
+                </div>
             </div>
         </div>
     );
 };
-
-export default AssociationPanel;

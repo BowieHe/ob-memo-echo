@@ -5,6 +5,7 @@
 
 import { TFile } from 'obsidian';
 import { ConceptExtractor, ExtractedConcepts } from './concept-extractor';
+import { extractWikilinkConcepts } from '../utils/wikilink-utils';
 
 /**
  * Association between two notes based on shared concepts
@@ -94,48 +95,51 @@ export class SimpleAssociationEngine {
         try {
             // Extract concepts from note content
             const extraction = await this.conceptExtractor.extract(content, title);
-            
-            if (extraction.concepts.length === 0) {
-                return { indexed: false, concepts: [] };
+
+            const extractedConcepts = extraction.concepts || [];
+            const extractedConfidences = extraction.conceptConfidences || extractedConcepts.map(() => 0.7);
+            const linkedConcepts = extractWikilinkConcepts(content);
+
+            const conceptConfidenceMap = new Map<string, number>();
+
+            for (let i = 0; i < extractedConcepts.length; i++) {
+                conceptConfidenceMap.set(extractedConcepts[i], extractedConfidences[i] ?? 0.7);
             }
 
-            const concepts = extraction.concepts;
-            const confidences = extraction.conceptConfidences || concepts.map(() => 0.7);
-
-            // Update note-concept mapping
-            this.noteConcepts.set(noteId, concepts);
-            this.noteConfidences.set(noteId, confidences);
-
-            // Update concept index (reverse mapping)
-            for (let i = 0; i < concepts.length; i++) {
-                const concept = concepts[i];
-                const confidence = confidences[i];
-
-                const entry = this.conceptIndex.get(concept) || {
-                    concept,
-                    noteIds: [],
-                    avgConfidence: 0,
-                    lastUpdated: new Date(),
-                };
-
-                // Add note to concept index if not already present
-                if (!entry.noteIds.includes(noteId)) {
-                    entry.noteIds.push(noteId);
-                    
-                    // Update average confidence
-                    const totalNotes = entry.noteIds.length;
-                    entry.avgConfidence = ((entry.avgConfidence * (totalNotes - 1)) + confidence) / totalNotes;
-                    
-                    entry.lastUpdated = new Date();
-                    this.conceptIndex.set(concept, entry);
+            for (const concept of linkedConcepts) {
+                const existing = conceptConfidenceMap.get(concept) ?? 0;
+                const linkedConfidence = 0.85;
+                if (linkedConfidence > existing) {
+                    conceptConfidenceMap.set(concept, linkedConfidence);
                 }
             }
 
+            const concepts = Array.from(conceptConfidenceMap.keys());
+            const confidences = concepts.map((concept) => conceptConfidenceMap.get(concept) ?? 0.7);
+
+            if (concepts.length === 0) {
+                return { indexed: false, concepts: [] };
+            }
+
+            this.updateNoteIndex(noteId, concepts, confidences);
             return { indexed: true, concepts };
         } catch (error) {
             console.error(`Failed to index note ${noteId}:`, error);
             return { indexed: false, concepts: [] };
         }
+    }
+
+    indexNoteConcepts(noteId: string, concepts: string[], confidences?: number[]): { indexed: boolean; concepts: string[] } {
+        if (!concepts || concepts.length === 0) {
+            return { indexed: false, concepts: [] };
+        }
+
+        const safeConfidences = confidences && confidences.length === concepts.length
+            ? confidences
+            : concepts.map(() => 0.75);
+
+        this.updateNoteIndex(noteId, concepts, safeConfidences, true);
+        return { indexed: true, concepts };
     }
 
     /**
@@ -175,6 +179,42 @@ export class SimpleAssociationEngine {
                         this.conceptIndex.set(concept, entry);
                     }
                 }
+            }
+        }
+    }
+
+    private updateNoteIndex(
+        noteId: string,
+        concepts: string[],
+        confidences: number[],
+        replaceExisting = false,
+    ): void {
+        if (replaceExisting) {
+            this.removeNote(noteId);
+        }
+
+        this.noteConcepts.set(noteId, concepts);
+        this.noteConfidences.set(noteId, confidences);
+
+        for (let i = 0; i < concepts.length; i++) {
+            const concept = concepts[i];
+            const confidence = confidences[i];
+
+            const entry = this.conceptIndex.get(concept) || {
+                concept,
+                noteIds: [],
+                avgConfidence: 0,
+                lastUpdated: new Date(),
+            };
+
+            if (!entry.noteIds.includes(noteId)) {
+                entry.noteIds.push(noteId);
+
+                const totalNotes = entry.noteIds.length;
+                entry.avgConfidence = ((entry.avgConfidence * (totalNotes - 1)) + confidence) / totalNotes;
+
+                entry.lastUpdated = new Date();
+                this.conceptIndex.set(concept, entry);
             }
         }
     }

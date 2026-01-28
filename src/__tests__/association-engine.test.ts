@@ -106,6 +106,42 @@ describe('SimpleAssociationEngine v0.6.0', () => {
             expect(result.concepts).toEqual([]);
         });
 
+        it('should index concepts from existing wikilinks', async () => {
+            mockExtractor.extract.mockResolvedValueOnce({
+                concepts: [],
+                confidence: 0,
+                conceptConfidences: [],
+            });
+
+            const content = 'Links: [[_me/幂等性]] and [[概念A|别名]]';
+            const result = await engine.indexNote('note-wiki.md', content);
+
+            expect(result.indexed).toBe(true);
+            expect(result.concepts).toEqual(expect.arrayContaining(['幂等性', '概念A']));
+        });
+
+        it('should merge extracted concepts with wikilinks', async () => {
+            mockExtractor.extract.mockResolvedValueOnce({
+                concepts: ['幂等性'],
+                confidence: 0.9,
+                conceptConfidences: [0.9],
+            });
+
+            const content = 'Links: [[_me/幂等性]] and [[概念B]]';
+            const result = await engine.indexNote('note-merge.md', content);
+
+            expect(result.indexed).toBe(true);
+            expect(result.concepts).toEqual(expect.arrayContaining(['幂等性', '概念B']));
+        });
+
+        it('should index concepts directly without extractor', () => {
+            const result = engine.indexNoteConcepts('note-direct.md', ['概念A', '概念B']);
+
+            expect(result.indexed).toBe(true);
+            expect(result.concepts).toEqual(['概念A', '概念B']);
+            expect(engine.getNotesForConcept('概念A')).toContain('note-direct.md');
+        });
+
         // TC-6.8.3: Should remove note from index
         it('should remove note from index', async () => {
             // First index a note

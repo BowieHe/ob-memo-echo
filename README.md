@@ -8,21 +8,21 @@ Memo Echo is an AI-powered Obsidian plugin that acts as your "Second Brain's Voi
 
 ## Features
 
--   🗣️ **Recommendation View ("Deep Recall")**:
-    -   As you type, it automatically analyzes your current paragraph.
-    -   Instantly recommends relevant past notes based on semantic meaning, not just keywords.
-    -   Helps you discover connections you might have forgotten.
+- 🗣️ **Recommendation View ("Deep Recall")**:
+    - As you type, it automatically analyzes your current paragraph.
+    - Instantly recommends relevant past notes based on semantic meaning, not just keywords.
+    - Helps you discover connections you might have forgotten.
 
--   🔍 **Semantic Search**: 
-    -   Search your knowledge base by concept and meaning.
-    -   Example: Search "how to build a website" and find notes about "HTML", "CSS", "Deployment" even if they don't contain the exact keywords.
+- 🔍 **Semantic Search**:
+    - Search your knowledge base by concept and meaning.
+    - Example: Search "how to build a website" and find notes about "HTML", "CSS", "Deployment" even if they don't contain the exact keywords.
 
--   🧠 **AI-Powered Metadata**:
-    -   Automatically generates summaries, tags, and categories for your notes using LLMs (Ollama or OpenAI).
+- 🧠 **AI-Powered Metadata**:
+    - Automatically generates summaries, tags, and categories for your notes using LLMs (Ollama or OpenAI).
 
--   🔒 **Privacy First**: 
-    -   Designed to work fully locally with Ollama and Qdrant.
-    -   Your data stays on your machine unless you explicitly choose an online provider (like OpenAI).
+- 🔒 **Privacy First**:
+    - Designed to work fully locally with Ollama and Qdrant.
+    - Your data stays on your machine unless you explicitly choose an online provider (like OpenAI).
 
 ## Prerequisites
 
@@ -40,23 +40,28 @@ Memo Echo is an AI-powered Obsidian plugin that acts as your "Second Brain's Voi
 ### Development Setup
 
 1. **Clone the repository**:
+
     ```bash
     git clone https://github.com/yourusername/memo-echo.git
     cd memo-echo
     ```
-    *(Note: The directory name doesn't affect functionality, you can rename `ob-image-vector` to `memo-echo`)*
+
+    _(Note: The directory name doesn't affect functionality, you can rename `ob-image-vector` to `memo-echo`)_
 
 2. **Install dependencies**:
+
     ```bash
     npm install
     ```
 
 3. **Build the plugin**:
+
     ```bash
     npm run dev
     ```
 
 4. **Install to Obsidian**:
+
     ```bash
     # Create plugin directory
     mkdir -p /path/to/vault/.obsidian/plugins/memo-echo
@@ -71,7 +76,7 @@ Memo Echo is an AI-powered Obsidian plugin that acts as your "Second Brain's Voi
 
 ## Usage
 
-1. **Configure**: 
+1. **Configure**:
     - Go to Settings -> **Memo Echo**.
     - Set up your Embedding Provider (Ollama/OpenAI).
     - Set up your AI Generation Provider (Ollama/OpenAI).
@@ -103,6 +108,35 @@ memo-echo/
 ├── manifest.json                    # Plugin manifest
 └── package.json                     # Dependencies
 ```
+
+- 插件总入口: src/main.ts
+    - onload/onunload、服务初始化、视图注册、命令注册
+- 设置页入口: src/settings.ts
+    - 设置 UI、默认配置、设置读写、分组布局
+- 向量数据库入口
+    - 接口层: src/services/vector-backend.ts
+    - Qdrant 实现: src/services/qdrant-backend.ts
+    - 索引调度: src/services/vector-index-manager.ts
+- Embedding 入口: src/services/embedding-service.ts
+    - 本地 / Ollama / OpenAI 的 embedding 统一入口
+- 概念提取与匹配入口
+    - 概念提取: src/services/concept-extractor.ts
+    - 概念注入/前置处理: src/services/frontmatter-service.ts
+    - 关联引擎: src/services/association-engine.ts
+    - 关联视图: src/association-view.ts
+- 关联建议 UI 入口
+    - 面板组件: src/components/AssociationPanel.tsx
+- 索引与内容切分入口
+    - 分块/切分: src/services/chunker.ts
+    - 段落检测: src/services/paragraph-detector.ts
+- 缓存/持久化入口
+    - 概念缓存: src/services/concept-cache-service.ts
+    - 内存缓存: src/services/memory-cache.ts
+    - 持久化队列: src/services/persist-queue.ts
+- 搜索/推荐 UI 入口
+    - 搜索视图: src/search-view.ts
+    - 推荐视图: src/recommendation-view.ts
+- 样式入口: styles.css
 
 ## License
 

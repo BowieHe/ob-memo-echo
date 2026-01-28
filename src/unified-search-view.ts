@@ -5,9 +5,16 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Sidebar } from './components/Sidebar';
 
-export const VIEW_TYPE_RECOMMENDATION = 'recommendation-view';
+export const VIEW_TYPE_UNIFIED_SEARCH = 'unified-search-view';
 
-export class RecommendationView extends ItemView {
+/**
+ * UnifiedSearchView - Combines Search and Recommendation functionality
+ * 
+ * Behavior:
+ * - When search box is empty: Shows ambient recommendations (auto-updates on paragraph changes)
+ * - When search box has content: Shows search results
+ */
+export class UnifiedSearchView extends ItemView {
     private indexManager: VectorIndexManager;
     private onIndexCurrentFile: () => Promise<void>;
     private container: HTMLElement;
@@ -24,21 +31,21 @@ export class RecommendationView extends ItemView {
     }
 
     getViewType(): string {
-        return VIEW_TYPE_RECOMMENDATION;
+        return VIEW_TYPE_UNIFIED_SEARCH;
     }
 
     getDisplayText(): string {
-        return '🔗 相关笔记推荐';
+        return '检索';
     }
 
     getIcon(): string {
-        return 'links';
+        return 'search';
     }
 
     async onOpen(): Promise<void> {
         this.container = this.containerEl.children[1] as HTMLElement;
         this.container.empty();
-        this.container.addClass('recommendation-view');
+        this.container.addClass('unified-search-view');
 
         // Mount React Component
         this.renderReact();
@@ -54,7 +61,8 @@ export class RecommendationView extends ItemView {
         this.root.render(
             React.createElement(Sidebar, {
                 indexManager: this.indexManager,
-                onIndexCurrent: this.handleIndexCurrentFile, // Direct callback
+                initialMode: 'ambient', // Start with ambient mode (empty search)
+                onIndexCurrent: this.handleIndexCurrentFile,
             })
         );
     }
@@ -77,27 +85,28 @@ export class RecommendationView extends ItemView {
     /**
      * Handle file open event from React
      */
-    private handleOpenFile = async (event: CustomEvent<SearchResult>) => {
-        const result = event.detail;
+    private handleOpenFile = async (event: any) => {
+        const result = event.detail as SearchResult;
         if (!result || !result.metadata.filePath) return;
 
         await this.jumpToResult(result);
     };
 
     /**
-     * Called by Main Plugin when paragraph changes
+     * Called by Main Plugin when paragraph changes (for ambient recommendations)
+     * This method enables the paragraph detector integration
      */
     async updateRecommendations(paragraph: string): Promise<void> {
         try {
-            // Search manually and dispatch event to React
+            // Search for similar content
             const results = await this.indexManager.search(paragraph, { limit: 5 });
 
-            // Dispatch event for React component to listen to
+            // Dispatch event for React component to update ambient results
             window.dispatchEvent(new CustomEvent('memo-echo:ambient-update', {
                 detail: results
             }));
         } catch (error) {
-            console.error('Failed to get recommendations:', error);
+            console.error('[UnifiedSearchView] Failed to get recommendations:', error);
         }
     }
 
@@ -117,15 +126,16 @@ export class RecommendationView extends ItemView {
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(file as any);
 
+        // Jump to specific line if available
         const view = leaf.view as any;
-        if (view.editor && result.metadata.start_line > 0) {
+        if (view.editor && startLine > 0) {
             const editor = view.editor;
-            editor.setCursor({ line: result.metadata.start_line - 1, ch: 0 });
+            editor.setCursor({ line: startLine - 1, ch: 0 });
 
-            // Highlight/Scroll
-            const endLine = result.metadata.end_line || result.metadata.start_line;
+            // Scroll to the target line
+            const endLine = result.metadata.end_line || startLine;
             editor.scrollIntoView({
-                from: { line: result.metadata.start_line - 1, ch: 0 },
+                from: { line: startLine - 1, ch: 0 },
                 to: { line: endLine, ch: 0 }
             }, true);
         }
