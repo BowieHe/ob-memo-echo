@@ -138,7 +138,16 @@ export class EmbeddingService {
             }
 
             const data = await response.json();
-            return data.embeddings[0] || data.embedding;
+
+            if (Array.isArray(data.embeddings) && data.embeddings.length > 0) {
+                return data.embeddings[0];
+            }
+
+            if (Array.isArray(data.embedding)) {
+                return data.embedding;
+            }
+
+            throw new Error('Ollama response missing embedding');
         } catch (error) {
             throw new Error(`Failed to generate Ollama embedding: ${error.message}`);
         }

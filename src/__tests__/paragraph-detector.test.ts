@@ -155,37 +155,55 @@ describe('ParagraphDetector (v0.2.0)', () => {
 
     describe('Paragraph Extraction', () => {
         it('should extract current paragraph from multi-paragraph text', () => {
+            const customDetector = new ParagraphDetector({
+                minChars: 50,
+                debounceMs: 0,
+                onParagraphComplete,
+            });
             const content = `First paragraph here.\n\nSecond paragraph with enough text to trigger detection. `.repeat(3) + '\n\n';
 
-            detector.onContentChange(content, content.length);
+            customDetector.onContentChange(content, content.length);
 
             expect(onParagraphComplete).toHaveBeenCalledWith(
                 expect.objectContaining({
                     content: expect.stringContaining('Second paragraph'),
                 })
             );
+            customDetector.destroy();
         });
 
         it('should handle text with headers', () => {
+            const customDetector = new ParagraphDetector({
+                minChars: 10,
+                debounceMs: 0,
+                onParagraphComplete,
+            });
             const content = `# Header\n\nParagraph content here. `.repeat(10) + '\n\n';
 
-            detector.onContentChange(content, content.length);
+            customDetector.onContentChange(content, content.length);
 
             expect(onParagraphComplete).toHaveBeenCalledWith(
                 expect.objectContaining({
                     content: expect.stringContaining('Paragraph content'),
                 })
             );
+            customDetector.destroy();
         });
 
         it('should trim whitespace from extracted paragraph', () => {
+            const customDetector = new ParagraphDetector({
+                minChars: 20,
+                debounceMs: 0,
+                onParagraphComplete,
+            });
             const content = `   \n\n  Paragraph with whitespace.  `.repeat(5) + '  \n\n';
 
-            detector.onContentChange(content, content.length);
+            customDetector.onContentChange(content, content.length);
 
             const call = onParagraphComplete.mock.calls[0][0];
             expect(call.content).not.toMatch(/^\s+/);
             expect(call.content).not.toMatch(/\s+$/);
+            customDetector.destroy();
         });
     });
 

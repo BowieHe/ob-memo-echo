@@ -29,8 +29,6 @@ export interface MemoEchoSettings {
     injectConcepts: boolean;           // Whether to inject concepts to frontmatter
     conceptExtractionProvider: 'ollama' | 'openai' | 'rules';
     conceptPageFolder: string;         // Folder for concept pages (default: _me)
-    createConceptPages: boolean;       // Auto-create concept pages
-    enableIncrementalIndexing: boolean; // Only reindex changed files
 
     // v0.6.0: Abstract Concept Extraction settings
     focusOnAbstractConcepts: boolean;  // Focus on abstract concepts vs specific tech
@@ -67,8 +65,6 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
     injectConcepts: true,
     conceptExtractionProvider: 'ollama',
     conceptPageFolder: '_me',
-    createConceptPages: true,
-    enableIncrementalIndexing: true,
 
     // v0.6.0 defaults
     focusOnAbstractConcepts: true,
@@ -280,25 +276,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }
                 }));
 
-        // Ollama Status
-        new Setting(statusContainer)
-            .setName('Ollama 状态')
-            .setDesc('Ollama 服务连接状态 (可选)')
-            .addButton(button => button
-                .setButtonText('检查连接')
-                .onClick(async () => {
-                    try {
-                        const response = await fetch('http://localhost:11434/api/tags');
-                        if (response.ok) {
-                            const data = await response.json();
-                            new Notice(`✅ Ollama 已连接 (${data.models?.length || 0} 个模型)`);
-                        } else {
-                            new Notice('❌ Ollama 连接失败');
-                        }
-                    } catch (error) {
-                        new Notice(`❌ Ollama 未运行`);
-                    }
-                }));
     }
 
     private addEmbeddingSection(containerEl: HTMLElement): void {
@@ -389,7 +366,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             // OpenAI settings
             new Setting(containerEl)
                 .setName('OpenAI API Key')
-                .setDesc('你的 OpenAI API 密钥')
+                .setDesc('OpenAI-compatible 服务的 API Key (本地 Ollama 可留空)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
                     .setValue(this.plugin.settings.openaiApiKey)
@@ -456,7 +433,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         if (this.plugin.settings.aiGenProvider === 'ollama') {
             new Setting(containerEl)
                 .setName('Ollama API URL')
-                .setDesc('Ollama 服务地址 (独立配置)')
+                .setDesc('Ollama 服务地址 (本地默认 http://localhost:11434)')
                 .addText(text => text
                     .setPlaceholder('http://localhost:11434')
                     .setValue(this.plugin.settings.aiGenUrl)
@@ -522,7 +499,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         if (this.plugin.settings.aiGenProvider === 'openai') {
             new Setting(containerEl)
                 .setName('OpenAI API Key')
-                .setDesc('用于总结的 API Key (如果不填则可能共用某个Key, 建议单独填)')
+                .setDesc('OpenAI-compatible 服务的 API Key (本地 Ollama 可留空)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
                     .setValue(this.plugin.settings.aiGenApiKey)
@@ -536,7 +513,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('OpenAI URL (Base URL)')
-                .setDesc('兼容 OpenAI 格式的 API 地址 (如 https://api.deepseek.com/v1)')
+                .setDesc('OpenAI-compatible API 地址 (如 https://api.deepseek.com/v1)')
                 .addText(text => text
                     .setPlaceholder('https://api.openai.com/v1')
                     .setValue(this.plugin.settings.aiGenUrl)
@@ -571,14 +548,22 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             .setDesc('Qdrant 服务地址 (修改后需重启插件)')
             .addText(text => text
                 .setPlaceholder('http://localhost:6333')
-                .setValue('http://localhost:6333'));
+                .setValue(this.plugin.settings.qdrantUrl)
+                .onChange(async (value) => {
+                    this.plugin.settings.qdrantUrl = value;
+                    await this.plugin.saveSettings();
+                }));
 
         new Setting(containerEl)
             .setName('集合名称')
             .setDesc('Qdrant 集合名称 (修改后需重启插件)')
             .addText(text => text
                 .setPlaceholder('obsidian_notes')
-                .setValue('obsidian_notes'));
+                .setValue(this.plugin.settings.qdrantCollection)
+                .onChange(async (value) => {
+                    this.plugin.settings.qdrantCollection = value;
+                    await this.plugin.saveSettings();
+                }));
     }
 
     // v0.5.0: Concept Injection Settings Section
@@ -615,37 +600,8 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
             // Concept page folder
             new Setting(containerEl)
-                .setName('概念页文件夹')
-                .setDesc('概念页存放位置 (如: _me)')
-                .addText(text => text
-                    .setPlaceholder('_me')
-                    .setValue(this.plugin.settings.conceptPageFolder)
-                    .onChange(async (value) => {
-                        this.plugin.settings.conceptPageFolder = value || '_me';
-                        await this.plugin.saveSettings();
-                    }));
-
-            // Create concept pages toggle
-            new Setting(containerEl)
-                .setName('自动创建概念页')
-                .setDesc('首次遇到新概念时自动创建概念页文件')
-                .addToggle(toggle => toggle
-                    .setValue(this.plugin.settings.createConceptPages)
-                    .onChange(async (value) => {
-                        this.plugin.settings.createConceptPages = value;
-                        await this.plugin.saveSettings();
-                    }));
-
-            // Incremental indexing toggle
-            new Setting(containerEl)
-                .setName('增量索引')
-                .setDesc('只索引修改过的文件 (基于 me_indexed_at)')
-                .addToggle(toggle => toggle
-                    .setValue(this.plugin.settings.enableIncrementalIndexing)
-                    .onChange(async (value) => {
-                        this.plugin.settings.enableIncrementalIndexing = value;
-                        await this.plugin.saveSettings();
-                    }));
+                .setName('概念页前缀')
+                .setDesc('固定为 _me，用于生成 [[_me/概念]] 链接');
 
             // v0.6.0: Abstract concept extraction settings
             containerEl.createEl('h4', { text: '🎯 v0.6.0 抽象概念提取' });
@@ -768,32 +724,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             new Setting(containerEl)
-                .setName('自动扫描批量上限')
-                .setDesc('自动扫描时最多处理的笔记数量')
-                .addSlider(slider => slider
-                    .setLimits(10, 200, 10)
-                    .setValue(this.plugin.settings.associationAutoScanBatchSize)
-                    .setDynamicTooltip()
-                    .onChange(async (value) => {
-                        this.plugin.settings.associationAutoScanBatchSize = value;
-                        await this.plugin.saveSettings();
-                    }));
-
-            new Setting(containerEl)
-                .setName('最小关联置信度')
-                .setDesc('只显示置信度高于此值的关联 (0.0-1.0)')
-                .addSlider(slider => slider
-                    .setLimits(0.1, 1.0, 0.1)
-                    .setValue(this.plugin.settings.associationMinConfidence)
-                    .setDynamicTooltip()
-                    .onChange(async (value) => {
-                        this.plugin.settings.associationMinConfidence = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.associationEngine.updateConfig({ minConfidence: value });
-                        this.updateAssociationStats(statsContainer);
-                    }));
-
-            new Setting(containerEl)
                 .setName('自动接受高质量关联')
                 .setDesc('自动接受置信度高的关联并写入概念')
                 .addToggle(toggle => toggle
@@ -804,16 +734,8 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             new Setting(containerEl)
-                .setName('自动接受阈值')
-                .setDesc('仅当关联置信度高于此值时自动接受 (0.0-1.0)')
-                .addSlider(slider => slider
-                    .setLimits(0.5, 1.0, 0.05)
-                    .setValue(this.plugin.settings.associationAutoAcceptConfidence)
-                    .setDynamicTooltip()
-                    .onChange(async (value) => {
-                        this.plugin.settings.associationAutoAcceptConfidence = value;
-                        await this.plugin.saveSettings();
-                    }));
+                .setName('高级选项')
+                .setDesc('关联阈值与扫描批量使用默认值');
 
             new Setting(containerEl)
                 .setName('重置忽略列表')

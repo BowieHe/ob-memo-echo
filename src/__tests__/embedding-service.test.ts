@@ -5,6 +5,12 @@
 
 import { EmbeddingService, EmbeddingProvider } from '../services/embedding-service';
 
+jest.mock('@xenova/transformers', () => ({
+    pipeline: jest.fn().mockResolvedValue(async () => ({
+        data: Float32Array.from([0.1, 0.2, 0.3, 0.4]),
+    })),
+}));
+
 // Mock fetch globally
 global.fetch = jest.fn();
 
@@ -77,13 +83,13 @@ describe('EmbeddingService', () => {
             const embedding = await service.embed(text);
 
             expect(global.fetch).toHaveBeenCalledWith(
-                'http://localhost:11434/api/embeddings',
+                'http://localhost:11434/api/embed',
                 expect.objectContaining({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: 'nomic-embed-text',
-                        prompt: text,
+                        input: text,
                     }),
                 })
             );
