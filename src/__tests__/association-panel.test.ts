@@ -55,6 +55,7 @@ describe('AssociationPanel (v0.6.0)', () => {
             });
         });
 
+        console.log("test")
         it('should have at least one shared concept', () => {
             mockAssociations.forEach(association => {
                 expect(association.sharedConcepts.length).toBeGreaterThan(0);
