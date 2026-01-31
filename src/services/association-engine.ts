@@ -4,32 +4,12 @@
  */
 
 import { TFile } from 'obsidian';
-import { ConceptExtractor, ExtractedConcepts } from './concept-extractor';
-import { extractWikilinkConcepts } from '../utils/wikilink-utils';
+import type { NoteAssociation, AssociationConfig, ConceptIndexEntry } from '@core/types/association';
+import { ConceptExtractor, type ExtractedConcepts } from './concept-extractor';
+import { extractWikilinkConcepts } from '@utils/wikilink-utils';
+import { ASSOCIATION_CONFIDENCE } from '@core/constants';
 
-/**
- * Association between two notes based on shared concepts
- */
-export interface NoteAssociation {
-    sourceNoteId: string;      // Source note path or ID
-    targetNoteId: string;      // Target note path or ID
-    sourceNoteTitle?: string;  // Source note title (for display)
-    targetNoteTitle?: string;  // Target note title (for display)
-    sharedConcepts: string[];  // Shared abstract concepts
-    confidence: number;        // Overall association confidence (0-1)
-    vectorSimilarity?: number; // Optional vector similarity score
-    discoveredAt: Date;        // When this association was discovered
-}
-
-/**
- * Configuration for association discovery
- */
-export interface AssociationConfig {
-    minSharedConcepts: number;     // Minimum number of shared concepts to form association
-    minConfidence: number;         // Minimum confidence threshold for associations
-    maxAssociations: number;       // Maximum number of associations to return
-    excludeSelfAssociations: boolean; // Whether to exclude associations with same note
-}
+export type { NoteAssociation, AssociationConfig, ConceptIndexEntry };
 
 /**
  * Default configuration for association discovery
@@ -40,16 +20,6 @@ export const DEFAULT_ASSOCIATION_CONFIG: AssociationConfig = {
     maxAssociations: 20,           // Return top 20 associations
     excludeSelfAssociations: true, // Don't associate note with itself
 };
-
-/**
- * Concept index entry mapping concept to notes
- */
-export interface ConceptIndexEntry {
-    concept: string;               // The concept
-    noteIds: string[];             // Notes containing this concept
-    avgConfidence: number;         // Average confidence across notes
-    lastUpdated: Date;             // When this entry was last updated
-}
 
 /**
  * Simple association engine for discovering note associations
@@ -108,9 +78,8 @@ export class SimpleAssociationEngine {
 
             for (const concept of linkedConcepts) {
                 const existing = conceptConfidenceMap.get(concept) ?? 0;
-                const linkedConfidence = 0.85;
-                if (linkedConfidence > existing) {
-                    conceptConfidenceMap.set(concept, linkedConfidence);
+                if (ASSOCIATION_CONFIDENCE.linked > existing) {
+                    conceptConfidenceMap.set(concept, ASSOCIATION_CONFIDENCE.linked);
                 }
             }
 
@@ -147,7 +116,7 @@ export class SimpleAssociationEngine {
      */
     removeNote(noteId: string): void {
         const concepts = this.noteConcepts.get(noteId) || [];
-        
+
         // Remove from note mappings
         this.noteConcepts.delete(noteId);
         this.noteConfidences.delete(noteId);
@@ -159,7 +128,7 @@ export class SimpleAssociationEngine {
                 const index = entry.noteIds.indexOf(noteId);
                 if (index !== -1) {
                     entry.noteIds.splice(index, 1);
-                    
+
                     if (entry.noteIds.length === 0) {
                         this.conceptIndex.delete(concept);
                     } else {
@@ -170,11 +139,11 @@ export class SimpleAssociationEngine {
                             const conceptIndex = noteConcepts.indexOf(concept);
                             return conceptIndex !== -1 ? noteConfidences[conceptIndex] : 0;
                         }).filter(c => c > 0);
-                        
+
                         entry.avgConfidence = confidences.length > 0
                             ? confidences.reduce((sum, c) => sum + c, 0) / confidences.length
                             : 0;
-                        
+
                         entry.lastUpdated = new Date();
                         this.conceptIndex.set(concept, entry);
                     }
@@ -228,7 +197,7 @@ export class SimpleAssociationEngine {
 
         // Get all note IDs
         const noteIds = Array.from(this.noteConcepts.keys());
-        
+
         if (noteIds.length < 2) {
             return []; // Need at least 2 notes for associations
         }
@@ -236,7 +205,7 @@ export class SimpleAssociationEngine {
         // For each concept, find notes that share it
         for (const [concept, entry] of this.conceptIndex.entries()) {
             const noteIdsWithConcept = entry.noteIds;
-            
+
             if (noteIdsWithConcept.length < 2) {
                 continue; // Need at least 2 notes sharing this concept
             }
@@ -246,17 +215,17 @@ export class SimpleAssociationEngine {
                 for (let j = i + 1; j < noteIdsWithConcept.length; j++) {
                     const sourceId = noteIdsWithConcept[i];
                     const targetId = noteIdsWithConcept[j];
-                    
+
                     // Skip self-associations if configured
                     if (this.config.excludeSelfAssociations && sourceId === targetId) {
                         continue;
                     }
 
                     // Create unique pair key
-                    const pairKey = sourceId < targetId 
-                        ? `${sourceId}|${targetId}` 
+                    const pairKey = sourceId < targetId
+                        ? `${sourceId}|${targetId}`
                         : `${targetId}|${sourceId}`;
-                    
+
                     if (processedPairs.has(pairKey)) {
                         continue; // Already processed this pair
                     }
@@ -265,14 +234,14 @@ export class SimpleAssociationEngine {
 
                     // Find all shared concepts between this pair
                     const sharedConcepts = this.findSharedConcepts(sourceId, targetId);
-                    
+
                     if (sharedConcepts.length >= this.config.minSharedConcepts) {
                         const association = this.createAssociation(
                             sourceId,
                             targetId,
                             sharedConcepts
                         );
-                        
+
                         if (association.confidence >= this.config.minConfidence) {
                             associations.push(association);
                         }
@@ -290,7 +259,7 @@ export class SimpleAssociationEngine {
      */
     async discoverAssociationsForNote(noteId: string): Promise<NoteAssociation[]> {
         const allAssociations = await this.discoverAssociations();
-        return allAssociations.filter(assoc => 
+        return allAssociations.filter(assoc =>
             assoc.sourceNoteId === noteId || assoc.targetNoteId === noteId
         );
     }
@@ -301,7 +270,7 @@ export class SimpleAssociationEngine {
     private findSharedConcepts(noteId1: string, noteId2: string): string[] {
         const concepts1 = this.noteConcepts.get(noteId1) || [];
         const concepts2 = this.noteConcepts.get(noteId2) || [];
-        
+
         return concepts1.filter(concept => concepts2.includes(concept));
     }
 
@@ -315,7 +284,7 @@ export class SimpleAssociationEngine {
     ): NoteAssociation {
         // Calculate confidence based on shared concepts and their confidences
         const confidence = this.calculateAssociationConfidence(sourceId, targetId, sharedConcepts);
-        
+
         return {
             sourceNoteId: sourceId,
             targetNoteId: targetId,
@@ -348,11 +317,11 @@ export class SimpleAssociationEngine {
         for (const concept of sharedConcepts) {
             const sourceIndex = sourceConcepts.indexOf(concept);
             const targetIndex = targetConcepts.indexOf(concept);
-            
+
             if (sourceIndex !== -1 && targetIndex !== -1) {
                 const sourceConf = sourceConfidences[sourceIndex] || 0.7;
                 const targetConf = targetConfidences[targetIndex] || 0.7;
-                
+
                 // Use average of both confidences
                 totalConfidence += (sourceConf + targetConf) / 2;
                 validConcepts++;
@@ -365,11 +334,11 @@ export class SimpleAssociationEngine {
 
         // Base confidence on average concept confidence
         let confidence = totalConfidence / validConcepts;
-        
+
         // Boost confidence based on number of shared concepts
         const conceptBoost = Math.min(sharedConcepts.length / 5, 0.2); // Max 20% boost
         confidence = Math.min(confidence + conceptBoost, 1.0);
-        
+
         return confidence;
     }
 
@@ -403,7 +372,7 @@ export class SimpleAssociationEngine {
     } {
         const totalNotes = this.noteConcepts.size;
         const totalConcepts = this.conceptIndex.size;
-        
+
         // Calculate average concepts per note
         let totalConceptCount = 0;
         for (const concepts of this.noteConcepts.values()) {
@@ -419,8 +388,8 @@ export class SimpleAssociationEngine {
         const avgNotesPerConcept = totalConcepts > 0 ? totalNoteCount / totalConcepts : 0;
 
         // Estimate total possible associations (n choose 2)
-        const totalAssociations = totalNotes > 1 
-            ? (totalNotes * (totalNotes - 1)) / 2 
+        const totalAssociations = totalNotes > 1
+            ? (totalNotes * (totalNotes - 1)) / 2
             : 0;
 
         return {

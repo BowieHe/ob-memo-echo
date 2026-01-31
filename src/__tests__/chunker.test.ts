@@ -3,7 +3,7 @@
  * Tests Markdown text chunking with header hierarchy preservation
  */
 
-import { Chunker, ChunkResult } from '../services/chunker';
+import { Chunker, ChunkResult } from '@services/chunker';
 
 describe('Chunker', () => {
     let chunker: Chunker;

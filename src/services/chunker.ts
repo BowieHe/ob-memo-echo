@@ -3,30 +3,9 @@
  * Ported from Rust implementation
  */
 
-export interface Header {
-    level: number;
-    text: string;
-    position: number;
-}
+import type { Header, ChunkResult, ChunkerConfig } from '@core/types/indexing';
 
-export interface ChunkResult {
-    content: string;
-    headers: Array<{ level: number; text: string }>;
-    index: number;
-    startPos: number;
-    endPos: number;
-
-    // v0.2.0: Enhanced metadata
-    start_line: number;      // 1-indexed line number where chunk starts
-    end_line: number;        // 1-indexed line number where chunk ends
-    header_path: string;     // Formatted header hierarchy (e.g., "# H1 > ## H2")
-}
-
-export interface ChunkerConfig {
-    minChunkSize?: number;
-    maxChunkSize?: number;
-    overlapSize?: number;
-}
+export type { Header, ChunkResult, ChunkerConfig };
 
 export class Chunker {
     private minChunkSize: number;

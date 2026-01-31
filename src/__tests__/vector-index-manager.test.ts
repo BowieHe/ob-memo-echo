@@ -3,44 +3,43 @@
  * Tests orchestration of indexing, caching, and persistence
  */
 
-import { VectorIndexManager } from '../services/vector-index-manager';
-import { MemoryCache } from '../services/memory-cache';
-import { PersistQueue } from '../services/persist-queue';
-import { VectorBackend } from '../services/vector-backend';
-import { EmbeddingService } from '../services/embedding-service';
-import { Chunker } from '../services/chunker';
-import { MetadataExtractor } from '../services/metadata-extractor';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { VectorIndexManager } from '@services/vector-index-manager';
+import type { VectorBackend } from '@backends/vector-backend';
+import { EmbeddingService } from '@services/embedding-service';
+import { Chunker } from '@services/chunker';
+import { MetadataExtractor } from '@services/metadata-extractor';
 
 describe('VectorIndexManager (v0.5.0)', () => {
     let manager: VectorIndexManager;
-    let mockBackend: jest.Mocked<VectorBackend>;
-    let mockEmbeddingService: jest.Mocked<EmbeddingService>;
-    let mockChunker: jest.Mocked<Chunker>;
-    let mockMetadataExtractor: jest.Mocked<MetadataExtractor>;
+    let mockBackend: any;
+    let mockEmbeddingService: any;
+    let mockChunker: any;
+    let mockMetadataExtractor: any;
 
     beforeEach(() => {
         mockBackend = {
-            initialize: jest.fn().mockResolvedValue(undefined),
-            upsertMultiVector: jest.fn().mockResolvedValue(undefined),
-            searchWithFusion: jest.fn().mockResolvedValue([]),
-            delete: jest.fn().mockResolvedValue(undefined),
-            deleteByFilePath: jest.fn().mockResolvedValue(undefined),
-            count: jest.fn().mockResolvedValue(0),
-            clear: jest.fn().mockResolvedValue(undefined),
+            initialize: vi.fn().mockResolvedValue(undefined),
+            upsertMultiVector: vi.fn().mockResolvedValue(undefined),
+            searchWithFusion: vi.fn().mockResolvedValue([]),
+            delete: vi.fn().mockResolvedValue(undefined),
+            deleteByFilePath: vi.fn().mockResolvedValue(undefined),
+            count: vi.fn().mockResolvedValue(0),
+            clear: vi.fn().mockResolvedValue(undefined),
         };
 
         mockEmbeddingService = {
-            embed: jest.fn(),
-            embedBatch: jest.fn(),
+            embed: vi.fn(),
+            embedBatch: vi.fn(),
         } as any;
 
         mockChunker = {
-            chunk: jest.fn(),
+            chunk: vi.fn(),
         } as any;
 
         mockMetadataExtractor = {
-            extract: jest.fn(),
-            extractWithRules: jest.fn(),
+            extract: vi.fn(),
+            extractWithRules: vi.fn(),
         } as any;
 
         manager = new VectorIndexManager(

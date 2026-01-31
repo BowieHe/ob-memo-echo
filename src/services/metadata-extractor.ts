@@ -3,26 +3,10 @@
  * Extracts summary, tags, and category from text content
  */
 
-export interface ExtractedMetadata {
-    summary: string;
-    tags: string[];
-    category: string;
-    concepts: string[]; // Abstract concepts (e.g., 'Idempotency', 'Trade-offs')
-    thinking_point: string; // Aphorism/Insight (e.g., 'Reliability requires state tracking')
-}
+import type { ExtractedMetadata, MetadataExtractorConfig } from '@core/types/extraction';
+import { CATEGORY_KEYWORDS, VALID_CATEGORIES, DEFAULT_CATEGORY, METADATA_CONSTRAINTS } from '@core/constants';
 
-/**
- * Configuration for MetadataExtractor
- */
-export interface MetadataExtractorConfig {
-    enableAi: boolean;
-    provider: 'ollama' | 'openai';
-    ollamaUrl?: string;
-    ollamaModel?: string;
-    openaiUrl?: string;
-    openaiModel?: string;
-    openaiApiKey?: string;
-}
+export type { ExtractedMetadata, MetadataExtractorConfig };
 
 export class MetadataExtractor {
     private config: MetadataExtractorConfig;
@@ -179,9 +163,8 @@ export class MetadataExtractor {
      * Build prompt for Ollama/OpenAI
      */
     private buildPrompt(content: string): string {
-        const maxLength = 2000;
-        const truncatedContent = content.length > maxLength
-            ? content.substring(0, maxLength) + '...'
+        const truncatedContent = content.length > METADATA_CONSTRAINTS.maxSummaryLength
+            ? content.substring(0, METADATA_CONSTRAINTS.maxSummaryLength) + '...'
             : content;
 
         return `请分析以下 Markdown 段落，提取关键信息。
@@ -241,19 +224,14 @@ ${truncatedContent}
 
     private inferCategory(content: string): string {
         const lowerContent = content.toLowerCase();
-        const techKeywords = ['code', 'function', 'class', 'api', 'bug', 'algorithm', 'data', 'programming', 'software', 'development', 'typescript', 'javascript', 'python', 'rust', 'java', 'database', 'server', 'client', '代码', '函数', '类', '算法', '数据', '编程', '软件', '开发'];
-        const diaryKeywords = ['今天', '昨天', '明天', '心情', '感觉', '想到', '觉得', 'today', 'yesterday', 'feel', 'feeling', 'mood'];
-        const bookKeywords = ['读了', '书中', '作者', '认为', '观点', '章节', 'book', 'author', 'chapter', 'read', 'reading'];
-        const ideaKeywords = ['想法', '灵感', '或许', '可以', '尝试', '创意', 'idea', 'inspiration', 'maybe', 'perhaps', 'creative'];
-
         const counts = {
-            tech: techKeywords.filter(kw => lowerContent.includes(kw)).length,
-            diary: diaryKeywords.filter(kw => lowerContent.includes(kw)).length,
-            book: bookKeywords.filter(kw => lowerContent.includes(kw)).length,
-            idea: ideaKeywords.filter(kw => lowerContent.includes(kw)).length,
+            tech: CATEGORY_KEYWORDS.tech.filter(kw => lowerContent.includes(kw)).length,
+            diary: CATEGORY_KEYWORDS.diary.filter(kw => lowerContent.includes(kw)).length,
+            book: CATEGORY_KEYWORDS.book.filter(kw => lowerContent.includes(kw)).length,
+            idea: CATEGORY_KEYWORDS.idea.filter(kw => lowerContent.includes(kw)).length,
         };
         const max = Math.max(counts.tech, counts.diary, counts.book, counts.idea);
-        if (max === 0 || counts.tech === max) return '技术笔记';
+        if (max === 0 || counts.tech === max) return DEFAULT_CATEGORY;
         if (counts.diary === max) return '生活日记';
         if (counts.book === max) return '读书笔记';
         if (counts.idea === max) return '想法灵感';
@@ -267,7 +245,6 @@ ${truncatedContent}
     }
 
     private normalizeCategory(category: string): string {
-        const validCategories = ['技术笔记', '生活日记', '读书笔记', '想法灵感', '工作记录'];
-        return validCategories.includes(category) ? category : '技术笔记';
+        return VALID_CATEGORIES.includes(category as any) ? category : DEFAULT_CATEGORY;
     }
 }

@@ -3,22 +3,23 @@
  * Tests batch persistence queue with deduplication
  */
 
-import { PersistQueue, QueuedChunk } from '../services/persist-queue';
-import { VectorBackend } from '../services/vector-backend';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { PersistQueue, type QueuedChunk } from '@services/persist-queue';
+import type { VectorBackend } from '@backends/vector-backend';
 
 describe('PersistQueue (v0.5.0)', () => {
     let queue: PersistQueue;
-    let mockBackend: jest.Mocked<VectorBackend>;
+    let mockBackend: any;
 
     beforeEach(() => {
         mockBackend = {
-            initialize: jest.fn().mockResolvedValue(undefined),
-            upsertMultiVector: jest.fn().mockResolvedValue(undefined),
-            searchWithFusion: jest.fn().mockResolvedValue([]),
-            delete: jest.fn().mockResolvedValue(undefined),
-            deleteByFilePath: jest.fn().mockResolvedValue(undefined),
-            count: jest.fn().mockResolvedValue(0),
-            clear: jest.fn().mockResolvedValue(undefined),
+            initialize: vi.fn().mockResolvedValue(undefined),
+            upsertMultiVector: vi.fn().mockResolvedValue(undefined),
+            searchWithFusion: vi.fn().mockResolvedValue([]),
+            delete: vi.fn().mockResolvedValue(undefined),
+            deleteByFilePath: vi.fn().mockResolvedValue(undefined),
+            count: vi.fn().mockResolvedValue(0),
+            clear: vi.fn().mockResolvedValue(undefined),
         };
 
         queue = new PersistQueue(mockBackend, {
@@ -160,11 +161,9 @@ describe('PersistQueue (v0.5.0)', () => {
 
         // TC-3.17: Periodic flush (interval-based)
         it('should flush periodically', async () => {
-            jest.useFakeTimers();
-
             const periodicQueue = new PersistQueue(mockBackend, {
                 batchSize: 100,
-                flushInterval: 1000, // 1 second
+                flushInterval: 100, // 100ms for faster test
                 useMultiVector: false,
             });
 
@@ -174,18 +173,14 @@ describe('PersistQueue (v0.5.0)', () => {
 
             expect(periodicQueue.size()).toBe(1);
 
-            // Fast-forward 1 second
-            jest.advanceTimersByTime(1000);
-
-            // Wait for async operations
-            await Promise.resolve();
+            // Wait for periodic flush
+            await new Promise(resolve => setTimeout(resolve, 150));
 
             expect(mockBackend.upsertMultiVector).toHaveBeenCalled();
             expect(periodicQueue.size()).toBe(0);
 
             periodicQueue.stop();
-            jest.useRealTimers();
-        });
+        }, { timeout: 5000 });
 
         // TC-3.18: Don't flush empty queue
         it('should not flush empty queue', async () => {
@@ -318,7 +313,7 @@ describe('PersistQueue (v0.5.0)', () => {
 
     describe('Lifecycle', () => {
         it('should stop periodic flushing', () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
 
             const periodicQueue = new PersistQueue(mockBackend, {
                 batchSize: 100,
@@ -333,12 +328,12 @@ describe('PersistQueue (v0.5.0)', () => {
             periodicQueue.stop();
 
             // Fast-forward time
-            jest.advanceTimersByTime(5000);
+            vi.advanceTimersByTime(5000);
 
             // Should not flush after stop
             expect(mockBackend.upsertMultiVector).not.toHaveBeenCalled();
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 });

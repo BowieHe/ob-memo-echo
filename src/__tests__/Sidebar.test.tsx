@@ -1,8 +1,9 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { Sidebar } from "../components/Sidebar";
-import { VectorIndexManager } from "../services/vector-index-manager";
+import { Sidebar } from "@components/Sidebar";
+import { VectorIndexManager } from "@services/vector-index-manager";
 
 describe("Sidebar Component", () => {
     let container: HTMLDivElement;
@@ -12,7 +13,7 @@ describe("Sidebar Component", () => {
         container = document.createElement("div");
         document.body.appendChild(container);
         mockIndexManager = {
-            search: jest.fn(),
+            search: vi.fn(),
         } as any;
     });
 
@@ -28,7 +29,7 @@ describe("Sidebar Component", () => {
                 <Sidebar
                     indexManager={mockIndexManager}
                     initialMode="ambient"
-                />
+                />,
             );
         });
 
@@ -42,7 +43,10 @@ describe("Sidebar Component", () => {
         act(() => {
             const root = ReactDOM.createRoot(container);
             root.render(
-                <Sidebar indexManager={mockIndexManager} initialMode="search" />
+                <Sidebar
+                    indexManager={mockIndexManager}
+                    initialMode="search"
+                />,
             );
         });
 

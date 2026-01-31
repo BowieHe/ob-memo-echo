@@ -3,8 +3,8 @@
  * Tests persistent ignored associations and deleted concept handling
  */
 
-import { AssociationPreferences, AssociationPreferencesState } from '../services/association-preferences';
-import type { NoteAssociation } from '../services/association-engine';
+import { AssociationPreferences, AssociationPreferencesState } from '@services/association-preferences';
+import type { NoteAssociation } from '@services/association-engine';
 
 describe('AssociationPreferences (v0.6.0)', () => {
     let state: AssociationPreferencesState;

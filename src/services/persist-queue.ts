@@ -3,38 +3,11 @@
  * v0.5.0: Uses VectorBackend interface for multi-backend support
  */
 
-import { VectorBackend, MultiVectorItem, VECTOR_NAMES } from './vector-backend';
+import type { VectorBackend, MultiVectorItem } from '@backends/vector-backend';
+import { VECTOR_NAMES } from '@core/constants';
+import type { QueuedChunk, MultiVectorQueuedChunk, PersistQueueConfig, QueueStats } from '@core/types/indexing';
 
-// Legacy single-vector queued chunk
-export interface QueuedChunk {
-    id: string;
-    vector: number[];
-    metadata: Record<string, any>;
-}
-
-// v0.4.0: Multi-vector queued chunk
-export interface MultiVectorQueuedChunk {
-    id: string;
-    vectors: {
-        [VECTOR_NAMES.CONTENT]: number[];
-        [VECTOR_NAMES.SUMMARY]: number[];
-        [VECTOR_NAMES.TITLE]: number[];
-    };
-    metadata: Record<string, any>;
-}
-
-export interface PersistQueueConfig {
-    batchSize?: number;
-    flushInterval?: number; // milliseconds
-    useMultiVector?: boolean; // v0.4.0
-}
-
-export interface QueueStats {
-    size: number;
-    totalFlushed: number;
-    flushCount: number;
-    failedFlushes: number;
-}
+export type { QueuedChunk, MultiVectorQueuedChunk, PersistQueueConfig, QueueStats };
 
 export class PersistQueue {
     private queue: Map<string, QueuedChunk>; // Legacy

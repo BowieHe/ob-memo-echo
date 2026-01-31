@@ -1,6 +1,7 @@
-import { UnifiedSearchView, VIEW_TYPE_UNIFIED_SEARCH } from '../unified-search-view';
-import { VectorIndexManager } from '../services/vector-index-manager';
+import { UnifiedSearchView } from '../unified-search-view';
+import { VectorIndexManager } from '@services/vector-index-manager';
 import { WorkspaceLeaf } from 'obsidian';
+import { VIEW_TYPE_UNIFIED_SEARCH } from '@core/constants';
 
 // Mock dependencies
 jest.mock('react-dom/client', () => ({

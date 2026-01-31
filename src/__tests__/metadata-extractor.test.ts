@@ -3,7 +3,7 @@
  * Tests AI-powered and rule-based metadata extraction
  */
 
-import { MetadataExtractor, ExtractedMetadata } from '../services/metadata-extractor';
+import { MetadataExtractor, ExtractedMetadata } from '@services/metadata-extractor';
 
 // Mock fetch for Ollama API
 global.fetch = jest.fn();

@@ -3,7 +3,7 @@
  * v0.6.0: Tests for the association panel React component
  */
 
-import { NoteAssociation } from '../services/association-engine';
+import { NoteAssociation } from '@services/association-engine';
 
 // Mock React and react-dom for testing without full render
 jest.mock('react', () => ({

@@ -3,7 +3,7 @@
  * Tests line number calculation and header path formatting
  */
 
-import { Chunker, ChunkResult } from '../services/chunker';
+import { Chunker, ChunkResult } from '@services/chunker';
 
 describe('Chunker Metadata Enhancement (v0.2.0)', () => {
     let chunker: Chunker;

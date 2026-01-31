@@ -1,4 +1,4 @@
-import { extractWikilinkConcepts } from '../utils/wikilink-utils';
+import { extractWikilinkConcepts } from '@utils/wikilink-utils';
 
 describe('extractWikilinkConcepts', () => {
     it('extracts concepts from wikilinks with aliases and paths', () => {

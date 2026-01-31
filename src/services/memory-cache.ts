@@ -3,13 +3,9 @@
  * Stores chunks temporarily for real-time recommendations
  */
 
-export interface CachedChunk {
-    id: string;
-    content: string;
-    embedding: number[];
-    metadata: Record<string, any>;
-    timestamp: number;
-}
+import type { CachedChunk } from '@core/types/indexing';
+
+export type { CachedChunk };
 
 export class MemoryCache {
     private cache: Map<string, CachedChunk>;

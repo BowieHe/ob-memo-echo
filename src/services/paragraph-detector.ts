@@ -3,24 +3,28 @@
  * Triggers recommendation when user completes a paragraph
  */
 
+import type { ParagraphCompletionEvent, ParagraphDetectorConfig } from '@core/types/frontmatter';
+
+export type { ParagraphCompletionEvent, ParagraphDetectorConfig };
+
 export interface ParagraphEvent {
     content: string;
     charCount: number;
     cursorPosition: number;
 }
 
-export interface ParagraphDetectorConfig {
+export interface ParagraphDetectorCallbackConfig {
     minChars: number; // Minimum characters to trigger
     debounceMs: number; // Debounce delay in milliseconds
     onParagraphComplete: (event: ParagraphEvent) => void;
 }
 
 export class ParagraphDetector {
-    private config: ParagraphDetectorConfig;
+    private config: ParagraphDetectorCallbackConfig;
     private debounceTimer: NodeJS.Timeout | null = null;
     private lastContent: string = '';
 
-    constructor(config: ParagraphDetectorConfig) {
+    constructor(config: ParagraphDetectorCallbackConfig) {
         this.config = config;
     }
 

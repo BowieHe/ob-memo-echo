@@ -3,62 +3,63 @@
  * Tests integration between VectorIndexManager and SimpleAssociationEngine
  */
 
-import { VectorIndexManager } from '../services/vector-index-manager';
-import { SimpleAssociationEngine } from '../services/association-engine';
-import { ConceptExtractor } from '../services/concept-extractor';
-import { VectorBackend } from '../services/vector-backend';
-import { EmbeddingService } from '../services/embedding-service';
-import { Chunker } from '../services/chunker';
-import { MetadataExtractor } from '../services/metadata-extractor';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { VectorIndexManager } from '@services/vector-index-manager';
+import { SimpleAssociationEngine } from '@services/association-engine';
+import { ConceptExtractor } from '@services/concept-extractor';
+import type { VectorBackend } from '@backends/vector-backend';
+import { EmbeddingService } from '@services/embedding-service';
+import { Chunker } from '@services/chunker';
+import { MetadataExtractor } from '@services/metadata-extractor';
 
 // Mock dependencies
-jest.mock('../services/vector-backend');
-jest.mock('../services/embedding-service');
-jest.mock('../services/chunker');
-jest.mock('../services/metadata-extractor');
-jest.mock('../services/concept-extractor');
+vi.mock('../backends/vector-backend');
+vi.mock('../services/embedding-service');
+vi.mock('../services/chunker');
+vi.mock('../services/metadata-extractor');
+vi.mock('../services/concept-extractor');
 
 describe('v0.6.0 Association Integration', () => {
-    let mockBackend: jest.Mocked<VectorBackend>;
-    let mockEmbeddingService: jest.Mocked<EmbeddingService>;
-    let mockChunker: jest.Mocked<Chunker>;
-    let mockMetadataExtractor: jest.Mocked<MetadataExtractor>;
-    let mockConceptExtractor: jest.Mocked<ConceptExtractor>;
+    let mockBackend: any;
+    let mockEmbeddingService: any;
+    let mockChunker: any;
+    let mockMetadataExtractor: any;
+    let mockConceptExtractor: any;
     let associationEngine: SimpleAssociationEngine;
     let indexManager: VectorIndexManager;
 
     beforeEach(() => {
         // Reset all mocks
-        jest.clearAllMocks();
+        vi.clearAllMocks();
 
         // Create mock instances
         mockBackend = {
-            initialize: jest.fn(),
-            upsertMultiVector: jest.fn(),
-            searchWithFusion: jest.fn(),
-            delete: jest.fn(),
-            createCollection: jest.fn(),
-            collectionExists: jest.fn(),
+            initialize: vi.fn(),
+            upsertMultiVector: vi.fn(),
+            searchWithFusion: vi.fn(),
+            delete: vi.fn(),
+            createCollection: vi.fn(),
+            collectionExists: vi.fn(),
         } as any;
 
         mockEmbeddingService = {
-            embed: jest.fn(),
-            embedBatch: jest.fn(),
-            updateConfig: jest.fn(),
+            embed: vi.fn(),
+            embedBatch: vi.fn(),
+            updateConfig: vi.fn(),
         } as any;
 
         mockChunker = {
-            chunk: jest.fn(),
+            chunk: vi.fn(),
         } as any;
 
         mockMetadataExtractor = {
-            extract: jest.fn(),
-            updateConfig: jest.fn(),
+            extract: vi.fn(),
+            updateConfig: vi.fn(),
         } as any;
 
         mockConceptExtractor = {
-            extract: jest.fn(),
-            updateConfig: jest.fn(),
+            extract: vi.fn(),
+            updateConfig: vi.fn(),
         } as any;
 
         // Create association engine
@@ -80,9 +81,9 @@ describe('v0.6.0 Association Integration', () => {
         it('should update association engine when indexing file', async () => {
             // Setup mocks
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk 1 content', 
-                    index: 0, 
+                {
+                    content: 'Chunk 1 content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -114,7 +115,7 @@ describe('v0.6.0 Association Integration', () => {
             // Check that association engine was updated
             const concepts = associationEngine.getNoteConcepts('kafka.md');
             expect(concepts).toEqual(['幂等性', '分布式系统']);
-            
+
             // Check that concept extractor was called
             expect(mockConceptExtractor.extract).toHaveBeenCalledWith(
                 'Kafka design with idempotency',
@@ -126,9 +127,9 @@ describe('v0.6.0 Association Integration', () => {
         it('should remove from association engine when removing file', async () => {
             // First index a file
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk content', 
-                    index: 0, 
+                {
+                    content: 'Chunk content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -169,9 +170,9 @@ describe('v0.6.0 Association Integration', () => {
         it('should re-index association engine when updating file', async () => {
             // Mock chunker to return chunks
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk content', 
-                    index: 0, 
+                {
+                    content: 'Chunk content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -207,14 +208,14 @@ describe('v0.6.0 Association Integration', () => {
 
             // Update file (which calls indexFile internally)
             await indexManager.updateFile('test.md', 'Original content');
-            
+
             // Check original concepts
             const concepts1 = associationEngine.getNoteConcepts('test.md');
             expect(concepts1).toEqual(['旧概念1', '旧概念2']);
 
             // Update file with new content
             await indexManager.updateFile('test.md', 'Updated content');
-            
+
             // Check updated concepts
             const concepts2 = associationEngine.getNoteConcepts('test.md');
             expect(concepts2).toEqual(['新概念1', '新概念2']);
@@ -225,9 +226,9 @@ describe('v0.6.0 Association Integration', () => {
         beforeEach(async () => {
             // Setup common test data: two notes sharing concepts
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk content', 
-                    index: 0, 
+                {
+                    content: 'Chunk content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -272,10 +273,10 @@ describe('v0.6.0 Association Integration', () => {
             // Should find association between the two notes
             expect(associations).toHaveLength(1);
             const association = associations[0];
-            
+
             expect(association.sharedConcepts).toEqual(['幂等性']);
             expect(association.confidence).toBeGreaterThan(0.5);
-            
+
             const noteIds = [association.sourceNoteId, association.targetNoteId];
             expect(noteIds).toContain('kafka.md');
             expect(noteIds).toContain('order-system.md');
@@ -311,7 +312,7 @@ describe('v0.6.0 Association Integration', () => {
             expect(stats.totalNotes).toBe(3);
             expect(stats.totalConcepts).toBe(4); // 概念1, 概念2, 概念3, 概念4
             expect(stats.avgConceptsPerNote).toBe(2); // Each note has 2 concepts
-            
+
             // Total possible associations: 3 choose 2 = 3
             expect(stats.totalAssociations).toBe(3);
         });
@@ -322,9 +323,9 @@ describe('v0.6.0 Association Integration', () => {
         it('should handle concept extraction errors gracefully', async () => {
             // Setup mocks for normal indexing
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk content', 
-                    index: 0, 
+                {
+                    content: 'Chunk content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -340,7 +341,7 @@ describe('v0.6.0 Association Integration', () => {
                 concepts: [],
                 thinking_point: '',
             });
-            
+
             // Mock embedding service to return embeddings (will be called 3 times)
             mockEmbeddingService.embed.mockResolvedValue([0.1, 0.2, 0.3]);
 
@@ -357,7 +358,7 @@ describe('v0.6.0 Association Integration', () => {
             // File should still be indexed in vector store, just not in association engine
             // Note: We can't easily test upsertMultiVector due to complex mocking
             // but we can verify the process didn't crash
-            
+
             // Association engine should not have the note
             const concepts = associationEngine.getNoteConcepts('test.md');
             expect(concepts).toEqual([]);
@@ -375,9 +376,9 @@ describe('v0.6.0 Association Integration', () => {
 
             // Setup mocks
             mockChunker.chunk.mockReturnValue([
-                { 
-                    content: 'Chunk content', 
-                    index: 0, 
+                {
+                    content: 'Chunk content',
+                    index: 0,
                     headers: [],
                     startPos: 0,
                     endPos: 100,
@@ -393,7 +394,7 @@ describe('v0.6.0 Association Integration', () => {
                 concepts: [],
                 thinking_point: '',
             });
-            
+
             // Mock embedding service to return embeddings
             mockEmbeddingService.embed.mockResolvedValue([0.1, 0.2, 0.3]);
 

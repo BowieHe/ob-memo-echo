@@ -1,11 +1,10 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { VectorIndexManager } from './services/vector-index-manager';
-import { SearchResult } from './services/vector-store';
+import type { SearchResult } from './backends/vector-backend';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Sidebar } from './components/Sidebar';
-
-export const VIEW_TYPE_UNIFIED_SEARCH = 'unified-search-view';
+import { VIEW_TYPE_UNIFIED_SEARCH } from './core/constants';
 
 /**
  * UnifiedSearchView - Combines Search and Recommendation functionality

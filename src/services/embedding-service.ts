@@ -3,20 +3,9 @@
  * Supports: Local (Transformers.js), Ollama, OpenAI
  */
 
-export type EmbeddingProvider = 'local' | 'ollama' | 'openai';
+import type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult } from '@core/types/embedding';
 
-export interface EmbeddingConfig {
-    provider: EmbeddingProvider;
-    ollamaUrl?: string;
-    ollamaModel?: string;
-    openaiApiKey?: string;
-    openaiModel?: string;
-}
-
-export interface BatchEmbeddingResult {
-    successful: number[][];
-    failed: Array<{ index: number; error: Error }>;
-}
+export type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult };
 
 export class EmbeddingService {
     private config: EmbeddingConfig;

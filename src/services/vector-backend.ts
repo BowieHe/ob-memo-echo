@@ -3,23 +3,12 @@
  * v0.5.0: Supports both Qdrant and LanceDB
  */
 
-// Named vector names (shared across backends)
-export const VECTOR_NAMES = {
-    CONTENT: 'content_vec',
-    SUMMARY: 'summary_vec',
-    TITLE: 'title_vec',
-} as const;
-
-export type VectorName = typeof VECTOR_NAMES[keyof typeof VECTOR_NAMES];
+import { VECTOR_NAMES, DEFAULT_WEIGHTS, RRF_K } from '@core/constants';
 
 // Multi-vector item for indexing
 export interface MultiVectorItem {
     id: string;
-    vectors: {
-        [VECTOR_NAMES.CONTENT]: number[];
-        [VECTOR_NAMES.SUMMARY]: number[];
-        [VECTOR_NAMES.TITLE]: number[];
-    };
+    vectors: Record<VECTOR_NAMES, number[]>;
     metadata: Record<string, any>;
 }
 
@@ -43,12 +32,8 @@ export interface SearchOptions {
     };
 }
 
-// Default fusion weights
-export const DEFAULT_WEIGHTS = {
-    [VECTOR_NAMES.CONTENT]: 0.4,
-    [VECTOR_NAMES.SUMMARY]: 0.4,
-    [VECTOR_NAMES.TITLE]: 0.2,
-};
+// Re-export constants for convenience
+export { VECTOR_NAMES, DEFAULT_WEIGHTS } from '@core/constants';
 
 /**
  * Abstract interface for vector storage backends
@@ -111,7 +96,7 @@ export function generateUUID(): string {
 export function rrfFusion(
     resultSets: Array<Array<{ id: string; score: number; metadata: Record<string, any> }>>,
     limit: number,
-    k: number = 60
+    k: number = RRF_K
 ): SearchResult[] {
     const scores = new Map<string, { score: number; metadata: Record<string, any> }>();
 

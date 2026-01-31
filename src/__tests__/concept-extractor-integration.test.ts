@@ -3,7 +3,7 @@
  * Tests real-world scenarios and integration with other components
  */
 
-import { ConceptExtractor, ConceptExtractionConfig } from '../services/concept-extractor';
+import { ConceptExtractor, ConceptExtractionConfig } from '@services/concept-extractor';
 
 // Mock fetch for API calls
 global.fetch = jest.fn();

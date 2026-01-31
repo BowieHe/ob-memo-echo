@@ -12,9 +12,7 @@ import { AssociationPreferences } from './services/association-preferences';
 import type { MemoEchoSettings } from './settings';
 import { FrontmatterService } from './services/frontmatter-service';
 import { extractWikilinkConcepts } from './utils/wikilink-utils';
-import { ConceptCacheService } from './services/concept-cache-service';
-
-export const VIEW_TYPE_ASSOCIATION = 'association-view';
+import { VIEW_TYPE_ASSOCIATION } from './core/constants';
 
 export class AssociationView extends ItemView {
     private root: Root | null = null;
@@ -23,7 +21,6 @@ export class AssociationView extends ItemView {
     private frontmatterService: FrontmatterService;
     private associationPreferences: AssociationPreferences;
     private getSettings: () => MemoEchoSettings;
-    private conceptCacheService: ConceptCacheService;
 
     // State
     private associations: NoteAssociation[] = [];
@@ -41,7 +38,6 @@ export class AssociationView extends ItemView {
         this.frontmatterService = frontmatterService;
         this.associationPreferences = associationPreferences;
         this.getSettings = getSettings;
-        this.conceptCacheService = new ConceptCacheService(this.app);
     }
 
     getViewType(): string {
@@ -160,44 +156,45 @@ export class AssociationView extends ItemView {
         const safeBatchSize = Math.max(5, batchSize || 50);
         new Notice('🔄 正在扫描关联...');
 
-        const cache = await this.conceptCacheService.load();
+        this.associationEngine.clearIndex();
+        let indexedCount = 0;
 
         for (let i = 0; i < files.length; i += safeBatchSize) {
             const batch = files.slice(i, i + safeBatchSize);
 
             for (const file of batch) {
                 try {
-                    const existing = cache.notes[file.path];
-                    if (existing && existing.mtime === file.stat.mtime) {
+                    // Check if file needs reindexing using me_indexed_at
+                    const fields = await this.frontmatterService.readMemoEchoFields(file);
+                    const lastIndexedAt = fields.me_indexed_at ? new Date(fields.me_indexed_at).getTime() : 0;
+                    const fileModifiedAt = file.stat.mtime;
+
+                    // Skip if file hasn't been modified since last indexing
+                    if (lastIndexedAt >= fileModifiedAt) {
+                        // Still load concepts from frontmatter for association engine
+                        if (fields.me_concepts && fields.me_concepts.length > 0) {
+                            const concepts = extractWikilinkConcepts(fields.me_concepts.join(' '));
+                            this.associationEngine.indexNoteConcepts(file.path, concepts);
+                        }
                         continue;
                     }
 
+                    // Get concepts for this file
                     const concepts = await this.getConceptsForFile(file);
                     if (concepts.length === 0) {
-                        delete cache.notes[file.path];
                         continue;
                     }
 
-                    cache.notes[file.path] = {
-                        mtime: file.stat.mtime,
-                        concepts,
-                    };
+                    this.associationEngine.indexNoteConcepts(file.path, concepts);
+                    indexedCount++;
                 } catch (error) {
+                    console.warn(`Failed to process file ${file.path}:`, error);
                     // Skip files with errors
                 }
             }
         }
 
-        cache.concepts = this.conceptCacheService.rebuildConceptIndex(cache.notes);
-        cache.updatedAt = new Date().toISOString();
-        await this.conceptCacheService.save(cache);
-
-        this.associationEngine.clearIndex();
-        for (const [noteId, entry] of Object.entries(cache.notes)) {
-            this.associationEngine.indexNoteConcepts(noteId, entry.concepts);
-        }
-
-        new Notice('✅ 扫描完成');
+        new Notice(`✅ 扫描完成 (已索引 ${indexedCount} 个文件)`);
     }
 
     private async getConceptsForFile(file: TFile): Promise<string[]> {

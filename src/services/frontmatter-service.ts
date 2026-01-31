@@ -4,11 +4,9 @@
  */
 
 import { App, TFile } from 'obsidian';
+import type { MemoEchoFrontmatter } from '@core/types/frontmatter';
 
-export interface MemoEchoFrontmatter {
-    me_concepts?: string[];      // Wikilink format: ["[[_me/Docker]]", "[[_me/部署]]"]
-    me_indexed_at?: string;      // ISO8601 timestamp
-}
+export type { MemoEchoFrontmatter };
 
 export class FrontmatterService {
     private app: App;
@@ -55,6 +53,11 @@ export class FrontmatterService {
      * @param concepts - Array of concept names (without wikilink syntax)
      */
     async setConcepts(file: TFile, concepts: string[]): Promise<void> {
+        if (concepts.length === 0) {
+            await this.clearMemoEchoFields(file);
+            return;
+        }
+
         // Convert to wikilink format
         const wikilinks = concepts.map(c => `[[${this.conceptPageFolder}/${c}]]`);
 
@@ -78,6 +81,11 @@ export class FrontmatterService {
      * Update both concepts and indexed_at atomically
      */
     async updateAfterIndexing(file: TFile, concepts: string[]): Promise<void> {
+        if (concepts.length === 0) {
+            await this.clearMemoEchoFields(file);
+            return;
+        }
+
         const wikilinks = concepts.map(c => `[[${this.conceptPageFolder}/${c}]]`);
         const isoString = new Date().toISOString();
 

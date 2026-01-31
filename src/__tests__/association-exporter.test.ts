@@ -2,8 +2,8 @@
  * Unit tests for association export utilities
  */
 
-import { buildAssociationExport } from '../services/association-exporter';
-import type { NoteAssociation } from '../services/association-engine';
+import { buildAssociationExport } from '@services/association-exporter';
+import type { NoteAssociation } from '@services/association-engine';
 
 describe('Association Exporter (v0.6.0)', () => {
     it('should build export payload with stats and associations', () => {

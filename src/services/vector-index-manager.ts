@@ -5,7 +5,8 @@
 
 import { MemoryCache, CachedChunk } from './memory-cache';
 import { PersistQueue, MultiVectorQueuedChunk } from './persist-queue';
-import { VectorBackend, SearchResult, VECTOR_NAMES } from './vector-backend';
+import type { VectorBackend, SearchResult } from '@backends/vector-backend';
+import { VECTOR_NAMES } from '@core/constants';
 import { EmbeddingService } from './embedding-service';
 import { Chunker, ChunkResult } from './chunker';
 import { MetadataExtractor } from './metadata-extractor';
@@ -258,7 +259,7 @@ export class VectorIndexManager {
     removeFile(filePath: string): void {
         this.memoryCache.deleteByFilePath(filePath);
         this.persistQueue.removeByFilePath(filePath);
-        
+
         // v0.6.0: Remove from association engine if available
         if (this.associationEngine) {
             try {

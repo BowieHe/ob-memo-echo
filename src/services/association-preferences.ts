@@ -3,7 +3,7 @@
  * v0.6.0: Tracks ignored associations and deleted concepts
  */
 
-import type { NoteAssociation } from './association-engine';
+import type { NoteAssociation } from '@core/types/association';
 
 export interface AssociationPreferencesState {
     ignoredAssociations: string[];

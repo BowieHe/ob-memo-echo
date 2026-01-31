@@ -1,13 +1,14 @@
 import { Plugin } from 'obsidian';
-import { UnifiedSearchView, VIEW_TYPE_UNIFIED_SEARCH } from './unified-search-view';
-import { AssociationView, VIEW_TYPE_ASSOCIATION } from './association-view';
+import { UnifiedSearchView } from './unified-search-view';
+import { AssociationView } from './association-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
-import { VectorBackend } from './services/vector-backend';
-import { QdrantBackend } from './services/qdrant-backend';
+import type { VectorBackend } from './backends/vector-backend';
+import { QdrantBackend } from './backends/qdrant-backend';
 import { Chunker } from './services/chunker';
 import { MetadataExtractor } from './services/metadata-extractor';
 import { VectorIndexManager } from './services/vector-index-manager';
+import { VIEW_TYPE_UNIFIED_SEARCH, VIEW_TYPE_ASSOCIATION } from './core/constants';
 import { ParagraphDetector } from './services/paragraph-detector';
 import { FrontmatterService } from './services/frontmatter-service';
 import { ConceptExtractor } from './services/concept-extractor';

@@ -3,7 +3,7 @@
  * Tests in-memory chunk storage with LRU eviction
  */
 
-import { MemoryCache, CachedChunk } from '../services/memory-cache';
+import { MemoryCache, CachedChunk } from '@services/memory-cache';
 
 describe('MemoryCache (v0.2.0)', () => {
     let cache: MemoryCache;

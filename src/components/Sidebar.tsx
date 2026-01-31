@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { SearchResult } from "../services/vector-store";
-import { VectorIndexManager } from "../services/vector-index-manager";
+import type { SearchResult } from "@backends/vector-backend";
+import { VectorIndexManager } from "@services/vector-index-manager";
 
 interface SidebarProps {
     indexManager: VectorIndexManager;

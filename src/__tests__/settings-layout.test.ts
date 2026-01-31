@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoEchoSettingTab, DEFAULT_SETTINGS } from '../settings';
 import { App } from 'obsidian';
 
@@ -7,10 +8,10 @@ describe('MemoEchoSettingTab layout', () => {
         const plugin = {
             settings: { ...DEFAULT_SETTINGS },
             vectorBackend: {
-                count: jest.fn().mockResolvedValue(0),
+                count: vi.fn().mockResolvedValue(0),
             },
             associationEngine: {
-                getStats: jest.fn().mockReturnValue({
+                getStats: vi.fn().mockReturnValue({
                     totalNotes: 0,
                     totalConcepts: 0,
                     totalAssociations: 0,
@@ -23,7 +24,7 @@ describe('MemoEchoSettingTab layout', () => {
         const headings: string[] = [];
         const container = tab.containerEl as any;
 
-        container.empty = jest.fn(() => {
+        container.empty = vi.fn(() => {
             container.innerHTML = '';
         });
 

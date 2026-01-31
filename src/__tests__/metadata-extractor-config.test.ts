@@ -1,14 +1,15 @@
 
-import { MetadataExtractor } from '../services/metadata-extractor';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MetadataExtractor } from '@services/metadata-extractor';
 
 // Mock fetch
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('MetadataExtractor Config (v0.2.1)', () => {
     let extractor: MetadataExtractor;
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should use Ollama API when provider is set to ollama', async () => {

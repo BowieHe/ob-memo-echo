@@ -3,22 +3,23 @@
  * Tests multiple embedding providers: local, Ollama, OpenAI
  */
 
-import { EmbeddingService, EmbeddingProvider } from '../services/embedding-service';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { EmbeddingService, EmbeddingProvider } from '@services/embedding-service';
 
-jest.mock('@xenova/transformers', () => ({
-    pipeline: jest.fn().mockResolvedValue(async () => ({
+vi.mock('@xenova/transformers', () => ({
+    pipeline: vi.fn().mockResolvedValue(async () => ({
         data: Float32Array.from([0.1, 0.2, 0.3, 0.4]),
     })),
 }));
 
 // Mock fetch globally
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('EmbeddingService', () => {
     let service: EmbeddingService;
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('Local Provider (Transformers.js)', () => {
@@ -202,7 +203,7 @@ describe('EmbeddingService', () => {
         it('should generate embeddings for multiple texts', async () => {
             const texts = ['text1', 'text2', 'text3'];
 
-            (global.fetch as jest.Mock).mockImplementation(() =>
+            (global.fetch as any).mockImplementation(() =>
                 Promise.resolve({
                     ok: true,
                     json: async () => ({ embedding: [1, 2, 3] }),
@@ -215,25 +216,25 @@ describe('EmbeddingService', () => {
             expect(global.fetch).toHaveBeenCalledTimes(3);
         });
 
-//         it('should handle partial failures in batch', async () => {
-//             const texts = ['text1', 'text2', 'text3'];
-// 
-//             (global.fetch as jest.Mock)
-//                 .mockResolvedValueOnce({
-//                     ok: true,
-//                     json: async () => ({ embedding: [1, 2, 3] }),
-//                 })
-//                 .mockRejectedValueOnce(new Error('Failed'))
-//                 .mockResolvedValueOnce({
-//                     ok: true,
-//                     json: async () => ({ embedding: [4, 5, 6] }),
-//                 });
-// 
-//             const result = await service.embedBatch(texts, { continueOnError: true });
-// 
-//             expect(result.successful).toHaveLength(2);
-//             expect(result.failed).toHaveLength(1);
-//         });
+        //         it('should handle partial failures in batch', async () => {
+        //             const texts = ['text1', 'text2', 'text3'];
+        // 
+        //             (global.fetch as any)
+        //                 .mockResolvedValueOnce({
+        //                     ok: true,
+        //                     json: async () => ({ embedding: [1, 2, 3] }),
+        //                 })
+        //                 .mockRejectedValueOnce(new Error('Failed'))
+        //                 .mockResolvedValueOnce({
+        //                     ok: true,
+        //                     json: async () => ({ embedding: [4, 5, 6] }),
+        //                 });
+        // 
+        //             const result = await service.embedBatch(texts, { continueOnError: true });
+        // 
+        //             expect(result.successful).toHaveLength(2);
+        //             expect(result.failed).toHaveLength(1);
+        //         });
     });
 });
 

@@ -3,7 +3,7 @@
  * Tests abstract concept extraction and quality filtering
  */
 
-import { ConceptExtractor, ConceptExtractionConfig, ExtractedConcepts } from '../services/concept-extractor';
+import { ConceptExtractor, ConceptExtractionConfig, ExtractedConcepts } from '@services/concept-extractor';
 
 // Mock fetch for API calls
 global.fetch = jest.fn();

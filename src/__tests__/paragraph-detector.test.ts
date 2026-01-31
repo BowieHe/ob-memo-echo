@@ -3,14 +3,15 @@
  * Tests paragraph completion detection logic
  */
 
-import { ParagraphDetector, ParagraphEvent } from '../services/paragraph-detector';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ParagraphDetector, ParagraphEvent } from '@services/paragraph-detector';
 
 describe('ParagraphDetector (v0.2.0)', () => {
     let detector: ParagraphDetector;
-    let onParagraphComplete: jest.Mock;
+    let onParagraphComplete: any;
 
     beforeEach(() => {
-        onParagraphComplete = jest.fn();
+        onParagraphComplete = vi.fn();
         detector = new ParagraphDetector({
             minChars: 100,
             debounceMs: 0, // Disable debounce for most tests
@@ -95,7 +96,7 @@ describe('ParagraphDetector (v0.2.0)', () => {
 
     describe('Debounce Logic', () => {
         it('should debounce rapid changes', () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
 
             const debouncedDetector = new ParagraphDetector({
                 minChars: 100,
@@ -114,7 +115,7 @@ describe('ParagraphDetector (v0.2.0)', () => {
             }, 500);
 
             // Fast-forward past debounce period
-            jest.advanceTimersByTime(1500);
+            vi.advanceTimersByTime(1500);
 
             // Should only trigger once (for content2)
             expect(onParagraphComplete).toHaveBeenCalledTimes(1);
@@ -125,11 +126,11 @@ describe('ParagraphDetector (v0.2.0)', () => {
             );
 
             debouncedDetector.destroy();
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('should trigger after debounce period', () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
 
             const debouncedDetector = new ParagraphDetector({
                 minChars: 100,
@@ -144,12 +145,12 @@ describe('ParagraphDetector (v0.2.0)', () => {
             expect(onParagraphComplete).not.toHaveBeenCalled();
 
             // Fast-forward past debounce period
-            jest.advanceTimersByTime(1000);
+            vi.advanceTimersByTime(1000);
 
             expect(onParagraphComplete).toHaveBeenCalledTimes(1);
 
             debouncedDetector.destroy();
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 
@@ -286,7 +287,7 @@ describe('ParagraphDetector (v0.2.0)', () => {
 
     describe('Lifecycle', () => {
         it('should cleanup on destroy', () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
 
             const debouncedDetector = new ParagraphDetector({
                 minChars: 100,
@@ -300,12 +301,12 @@ describe('ParagraphDetector (v0.2.0)', () => {
             debouncedDetector.destroy();
 
             // Fast-forward time
-            jest.advanceTimersByTime(2000);
+            vi.advanceTimersByTime(2000);
 
             // Should not trigger after destroy
             expect(onParagraphComplete).not.toHaveBeenCalled();
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 });

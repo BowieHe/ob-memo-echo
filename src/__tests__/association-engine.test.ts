@@ -3,8 +3,8 @@
  * Tests association discovery based on shared concepts
  */
 
-import { SimpleAssociationEngine, NoteAssociation, AssociationConfig } from '../services/association-engine';
-import { ConceptExtractor } from '../services/concept-extractor';
+import { SimpleAssociationEngine, NoteAssociation, AssociationConfig } from '@services/association-engine';
+import { ConceptExtractor } from '@services/concept-extractor';
 
 // Mock ConceptExtractor
 jest.mock('../services/concept-extractor');

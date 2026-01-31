@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { NoteAssociation } from "../services/association-engine";
+import { NoteAssociation } from "@services/association-engine";
 
 export interface AssociationPanelProps {
     associations: NoteAssociation[];

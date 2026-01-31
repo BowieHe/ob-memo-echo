@@ -3,25 +3,9 @@
  * v0.5.0: Extracts concepts that can be used for Graph View connections
  */
 
-export interface ConceptExtractionConfig {
-    provider: 'ollama' | 'openai' | 'rules';
-    ollamaUrl?: string;
-    ollamaModel?: string;
-    openaiApiKey?: string;
-    openaiModel?: string;
-    maxConcepts?: number;
-    
-    // v0.6.0 新增字段
-    focusOnAbstractConcepts?: boolean;      // 是否专注于抽象概念
-    minConfidence?: number;                 // 最小置信度阈值
-    excludeGenericConcepts?: string[];      // 排除的通用概念列表
-}
+import type { ConceptExtractionConfig, ExtractedConcepts } from '@core/types/extraction';
 
-export interface ExtractedConcepts {
-    concepts: string[];
-    confidence: number;                     // 整体置信度（现有字段）
-    conceptConfidences?: number[];          // 每个概念的置信度（新增字段）
-}
+export type { ConceptExtractionConfig, ExtractedConcepts };
 
 export class ConceptExtractor {
     private config: ConceptExtractionConfig;
@@ -30,7 +14,7 @@ export class ConceptExtractor {
         this.config = {
             maxConcepts: 5,
             ollamaUrl: 'http://localhost:11434',
-            ollamaModel: 'qwen2.5:3b',
+            ollamaModel: 'qwen3:4b',
             openaiModel: 'gpt-4o-mini',
             // v0.6.0 默认值
             focusOnAbstractConcepts: true,      // 默认专注于抽象概念
@@ -83,12 +67,12 @@ export class ConceptExtractor {
 
         const data = await response.json();
         const result = this.parseResponse(data.response);
-        
+
         // Ensure confidence is set
         if (result.confidence === 0 && result.concepts.length > 0) {
             result.confidence = 0.9; // Default high confidence for AI extraction
         }
-        
+
         return result;
     }
 
@@ -123,12 +107,12 @@ export class ConceptExtractor {
 
         const data = await response.json();
         const result = this.parseResponse(data.choices[0].message.content);
-        
+
         // Ensure confidence is set
         if (result.confidence === 0 && result.concepts.length > 0) {
             result.confidence = 0.9; // Default high confidence for AI extraction
         }
-        
+
         return result;
     }
 
@@ -194,7 +178,7 @@ export class ConceptExtractor {
         // Limit to max concepts
         const conceptArray = Array.from(concepts).slice(0, this.config.maxConcepts || 5);
         const confidences = conceptArray.map(() => 0.6); // Lower confidence for rule-based
-        
+
         // Apply quality filtering to rule-based extraction too
         const filtered = this.filterConceptsByQuality(conceptArray, confidences);
 
@@ -260,13 +244,13 @@ JSON response:`;
 
             if (Array.isArray(parsed.concepts)) {
                 const concepts = parsed.concepts.map((c: string) => this.normalizeConcept(c));
-                const confidences = Array.isArray(parsed.confidences) 
-                    ? parsed.confidences 
+                const confidences = Array.isArray(parsed.confidences)
+                    ? parsed.confidences
                     : concepts.map(() => 0.9); // Default confidence if not provided
-                
+
                 // Apply quality filtering
                 const filtered = this.filterConceptsByQuality(concepts, confidences);
-                
+
                 return {
                     concepts: filtered.concepts,
                     confidence: filtered.overallConfidence,
@@ -294,46 +278,46 @@ JSON response:`;
 
         const minConfidence = this.config.minConfidence || 0.7;
         const excludeGenericConcepts = this.config.excludeGenericConcepts || [];
-        
+
         const filteredConcepts: string[] = [];
         const filteredConfidences: number[] = [];
-        
+
         for (let i = 0; i < concepts.length; i++) {
             const concept = concepts[i];
             const confidence = confidences[i];
-            
+
             // 1. Check confidence threshold
             if (confidence < minConfidence) {
                 continue;
             }
-            
+
             // 2. Check for generic concepts to exclude
-            const isGeneric = excludeGenericConcepts.some(generic => 
+            const isGeneric = excludeGenericConcepts.some(generic =>
                 concept.toLowerCase().includes(generic.toLowerCase())
             );
             if (isGeneric) {
                 continue;
             }
-            
+
             // 3. Check concept length and validity
             if (concept.length < 2 || concept.length > 30) {
                 continue;
             }
-            
+
             filteredConcepts.push(concept);
             filteredConfidences.push(confidence);
         }
-        
+
         // Limit to max concepts
         const maxConcepts = this.config.maxConcepts || 5;
         const finalConcepts = filteredConcepts.slice(0, maxConcepts);
         const finalConfidences = filteredConfidences.slice(0, maxConcepts);
-        
+
         // Calculate overall confidence (average of filtered concepts)
         const overallConfidence = finalConfidences.length > 0
             ? finalConfidences.reduce((sum, conf) => sum + conf, 0) / finalConfidences.length
             : 0.6; // Default confidence for rule-based or empty
-        
+
         return {
             concepts: finalConcepts,
             confidences: finalConfidences,
