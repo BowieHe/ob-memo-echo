@@ -1,32 +1,33 @@
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { UnifiedSearchView } from '../unified-search-view';
 import { VectorIndexManager } from '@services/vector-index-manager';
 import { WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE_UNIFIED_SEARCH } from '@core/constants';
 
 // Mock dependencies
-jest.mock('react-dom/client', () => ({
-    createRoot: jest.fn(() => ({
-        render: jest.fn(),
-        unmount: jest.fn(),
+vi.mock('react-dom/client', () => ({
+    createRoot: vi.fn(() => ({
+        render: vi.fn(),
+        unmount: vi.fn(),
     })),
 }));
-jest.mock('../services/vector-index-manager');
+vi.mock('../services/vector-index-manager');
 
 describe('UnifiedSearchView', () => {
     let view: UnifiedSearchView;
-    let mockLeaf: jest.Mocked<WorkspaceLeaf>;
-    let mockIndexManager: jest.Mocked<VectorIndexManager>;
-    let mockOnIndexCurrentFile: jest.Mock;
+    let mockLeaf: any;
+    let mockIndexManager: any;
+    let mockOnIndexCurrentFile: Mock;
     let mockApp: any;
 
     beforeEach(() => {
         // Setup app mock
         mockApp = {
             vault: {
-                getAbstractFileByPath: jest.fn(),
+                getAbstractFileByPath: vi.fn(),
             },
             workspace: {
-                getLeaf: jest.fn(),
+                getLeaf: vi.fn(),
             },
         };
 
@@ -37,10 +38,10 @@ describe('UnifiedSearchView', () => {
         } as any;
 
         mockIndexManager = {
-            search: jest.fn().mockResolvedValue([]),
+            search: vi.fn().mockResolvedValue([]),
         } as any;
 
-        mockOnIndexCurrentFile = jest.fn().mockResolvedValue(undefined);
+        mockOnIndexCurrentFile = vi.fn().mockResolvedValue(undefined);
 
         // Create view instance
         view = new UnifiedSearchView(
@@ -54,7 +55,7 @@ describe('UnifiedSearchView', () => {
     });
 
     afterEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('View Type and Display', () => {
@@ -79,12 +80,12 @@ describe('UnifiedSearchView', () => {
         });
 
         it('should register event listeners on open', async () => {
-            const addEventListenerSpy = jest.spyOn(window, 'addEventListener');
+            const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
 
             // Mock containerEl with Obsidian HTMLElement methods
             const mockContainer = document.createElement('div');
-            (mockContainer as any).empty = jest.fn();
-            (mockContainer as any).addClass = jest.fn();
+            (mockContainer as any).empty = vi.fn();
+            (mockContainer as any).addClass = vi.fn();
 
             view.containerEl = {
                 children: [null, mockContainer],
@@ -105,7 +106,7 @@ describe('UnifiedSearchView', () => {
         });
 
         it('should remove event listeners on close', async () => {
-            const removeEventListenerSpy = jest.spyOn(window, 'removeEventListener');
+            const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
 
             await view.onClose();
 
@@ -126,8 +127,8 @@ describe('UnifiedSearchView', () => {
         it('should call onIndexCurrentFile when index button is triggered', async () => {
             // Mock containerEl with Obsidian HTMLElement methods
             const mockContainer = document.createElement('div');
-            (mockContainer as any).empty = jest.fn();
-            (mockContainer as any).addClass = jest.fn();
+            (mockContainer as any).empty = vi.fn();
+            (mockContainer as any).addClass = vi.fn();
 
             view.containerEl = {
                 children: [null, mockContainer],
@@ -156,7 +157,7 @@ describe('UnifiedSearchView', () => {
             ];
             mockIndexManager.search.mockResolvedValue(mockResults as any);
 
-            const dispatchEventSpy = jest.spyOn(window, 'dispatchEvent');
+            const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
 
             await view.updateRecommendations('test paragraph content');
 
@@ -181,14 +182,14 @@ describe('UnifiedSearchView', () => {
             // Setup specific mocks for this test
             const mockFile = { path: 'test.md' };
             const mockEditor = {
-                setCursor: jest.fn(),
-                scrollIntoView: jest.fn(),
+                setCursor: vi.fn(),
+                scrollIntoView: vi.fn(),
             };
             const mockLeafView = {
                 editor: mockEditor,
             };
             const mockNewLeaf = {
-                openFile: jest.fn().mockResolvedValue(undefined),
+                openFile: vi.fn().mockResolvedValue(undefined),
                 view: mockLeafView,
             };
 
@@ -197,8 +198,8 @@ describe('UnifiedSearchView', () => {
 
             // Mock containerEl with Obsidian HTMLElement methods
             const mockContainer = document.createElement('div');
-            (mockContainer as any).empty = jest.fn();
-            (mockContainer as any).addClass = jest.fn();
+            (mockContainer as any).empty = vi.fn();
+            (mockContainer as any).addClass = vi.fn();
 
             view.containerEl = {
                 children: [null, mockContainer],

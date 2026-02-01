@@ -3,16 +3,17 @@
  * Tests real-world scenarios and integration with other components
  */
 
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { ConceptExtractor, ConceptExtractionConfig } from '@services/concept-extractor';
 
 // Mock fetch for API calls
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('ConceptExtractor v0.6.0 - Integration Tests', () => {
     let extractor: ConceptExtractor;
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('Real-world Technical Notes', () => {
@@ -34,7 +35,7 @@ describe('ConceptExtractor v0.6.0 - Integration Tests', () => {
                 confidences: [0.9, 0.85, 0.8, 0.75],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -59,12 +60,12 @@ Kafka 采用事件驱动架构，帮助系统解耦，提高可扩展性。
             expect(result.concepts).toContain('事件驱动');
             expect(result.concepts).toContain('数据一致性');
             expect(result.concepts).toContain('分布式系统');
-            
+
             // Should NOT extract specific technology names
             expect(result.concepts).not.toContain('Kafka');
             expect(result.concepts).not.toContain('消息队列');
             expect(result.concepts).not.toContain('ISR');
-            
+
             // Should have confidence scores
             expect(result.conceptConfidences).toBeDefined();
             expect(result.conceptConfidences?.length).toBe(result.concepts.length);
@@ -78,7 +79,7 @@ Kafka 采用事件驱动架构，帮助系统解耦，提高可扩展性。
                 confidences: [0.9, 0.85, 0.8, 0.75],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -106,7 +107,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
             expect(result.concepts).toContain('负载均衡');
             expect(result.concepts).toContain('容错性');
             expect(result.concepts).toContain('API网关');
-            
+
             // Should NOT extract specific technology names
             expect(result.concepts).not.toContain('Consul');
             expect(result.concepts).not.toContain('Eureka');
@@ -132,7 +133,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
                 confidences: [0.9, 0.8],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(abstractMockResponse) }),
             });
@@ -152,7 +153,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
                 confidences: [0.9, 0.8, 0.7],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(specificMockResponse) }),
             });
@@ -161,10 +162,10 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
 
             // Results should be different based on configuration
             expect(abstractResult.concepts).not.toEqual(specificResult.concepts);
-            
+
             // Abstract extractor should not include specific tech names
             expect(abstractResult.concepts).not.toContain('Kafka');
-            
+
             // Specific extractor may include tech names
             // (This depends on the mock response we set up)
         });
@@ -188,7 +189,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
                 confidences: [0.9, 0.85, 0.8, 0.75, 0.7],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -198,7 +199,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
             // Should be limited to maxConcepts (3)
             expect(result.concepts.length).toBeLessThanOrEqual(3);
             expect(result.concepts).toHaveLength(3);
-            
+
             // Should include highest confidence concepts
             expect(result.concepts).toContain('概念1');
             expect(result.concepts).toContain('概念2');
@@ -214,7 +215,7 @@ Spring Cloud Gateway 作为 API 网关，统一入口和路由管理。`;
                 confidences: [],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });

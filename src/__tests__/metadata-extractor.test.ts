@@ -3,10 +3,11 @@
  * Tests AI-powered and rule-based metadata extraction
  */
 
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { MetadataExtractor, ExtractedMetadata } from '@services/metadata-extractor';
 
 // Mock fetch for Ollama API
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('MetadataExtractor (v0.2.0)', () => {
     let extractor: MetadataExtractor;
@@ -16,7 +17,7 @@ describe('MetadataExtractor (v0.2.0)', () => {
             ollamaUrl: 'http://localhost:11434',
             ollamaModel: 'llama3.2:3b'
         });
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('AI-Powered Extraction (Ollama)', () => {
@@ -28,7 +29,7 @@ describe('MetadataExtractor (v0.2.0)', () => {
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -55,7 +56,7 @@ ensures memory safety without garbage collection.`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -74,7 +75,7 @@ ensures memory safety without garbage collection.`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -95,7 +96,7 @@ ensures memory safety without garbage collection.`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -113,7 +114,7 @@ ensures memory safety without garbage collection.`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -188,7 +189,7 @@ Content here...`;
     describe('Error Handling', () => {
         // TC-2.3: Handle Ollama API errors gracefully
         it('should fallback to rules when Ollama API fails', async () => {
-            (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
+            (global.fetch as Mock).mockRejectedValueOnce(new Error('Network error'));
 
             const content = '# Test Content\n\nThis is a test.';
             const result = await extractor.extract(content);
@@ -200,7 +201,7 @@ Content here...`;
         });
 
         it('should handle invalid JSON response from Ollama', async () => {
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: 'invalid json{' }),
             });
@@ -229,7 +230,7 @@ Content here...`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -254,7 +255,7 @@ Content here...`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -279,14 +280,14 @@ Content here...`;
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
 
             await customExtractor.extract('Test');
 
-            const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+            const callArgs = (global.fetch as Mock).mock.calls[0];
             const requestBody = JSON.parse(callArgs[1].body);
             expect(requestBody.model).toBe('custom-model');
         });
@@ -306,7 +307,7 @@ TypeScript 的类型系统非常强大，支持泛型、联合类型、交叉类
                 category: '技术笔记',
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });

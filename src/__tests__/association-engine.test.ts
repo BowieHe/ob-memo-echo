@@ -3,29 +3,30 @@
  * Tests association discovery based on shared concepts
  */
 
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { SimpleAssociationEngine, NoteAssociation, AssociationConfig } from '@services/association-engine';
 import { ConceptExtractor } from '@services/concept-extractor';
 
 // Mock ConceptExtractor
-jest.mock('../services/concept-extractor');
+vi.mock('../services/concept-extractor');
 
 describe('SimpleAssociationEngine v0.6.0', () => {
     let engine: SimpleAssociationEngine;
-    let mockExtractor: jest.Mocked<ConceptExtractor>;
+    let mockExtractor: { extract: Mock; updateConfig: Mock };
 
     beforeEach(() => {
         // Create mock extractor
         mockExtractor = {
-            extract: jest.fn(),
-            updateConfig: jest.fn(),
+            extract: vi.fn(),
+            updateConfig: vi.fn(),
         } as any;
 
         // Create engine with mock extractor
-        engine = new SimpleAssociationEngine(mockExtractor);
+        engine = new SimpleAssociationEngine(mockExtractor as any);
     });
 
     afterEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('Configuration', () => {
@@ -38,7 +39,7 @@ describe('SimpleAssociationEngine v0.6.0', () => {
                 excludeSelfAssociations: false,
             };
 
-            engine = new SimpleAssociationEngine(mockExtractor, customConfig);
+            engine = new SimpleAssociationEngine(mockExtractor as any, customConfig);
             const config = engine.getConfig();
 
             expect(config.minSharedConcepts).toBe(2);
@@ -228,11 +229,11 @@ describe('SimpleAssociationEngine v0.6.0', () => {
 
             // Should find association between Kafka and Order System (shared: 幂等性)
             expect(associations).toHaveLength(1);
-            
+
             const association = associations[0];
             expect(association.sharedConcepts).toEqual(['幂等性']);
             expect(association.confidence).toBeGreaterThan(0.5);
-            
+
             // Should include both notes (order doesn't matter)
             const noteIds = [association.sourceNoteId, association.targetNoteId];
             expect(noteIds).toContain('kafka.md');
@@ -243,9 +244,9 @@ describe('SimpleAssociationEngine v0.6.0', () => {
         it('should respect minSharedConcepts configuration', async () => {
             // Update config to require 2 shared concepts
             engine.updateConfig({ minSharedConcepts: 2 });
-            
+
             const associations = await engine.discoverAssociations();
-            
+
             // No notes share 2 concepts, so should return empty
             expect(associations).toHaveLength(0);
         });
@@ -254,9 +255,9 @@ describe('SimpleAssociationEngine v0.6.0', () => {
         it('should respect minConfidence configuration', async () => {
             // Update config to require confidence higher than possible
             engine.updateConfig({ minConfidence: 1.1 }); // Higher than max possible 1.0
-            
+
             const associations = await engine.discoverAssociations();
-            
+
             // Confidence is 1.0, which is less than 1.1, so should return empty
             expect(associations).toHaveLength(0);
         });
@@ -264,15 +265,15 @@ describe('SimpleAssociationEngine v0.6.0', () => {
         // TC-6.9.4: Should discover associations for specific note
         it('should discover associations for specific note', async () => {
             const associations = await engine.discoverAssociationsForNote('kafka.md');
-            
+
             expect(associations).toHaveLength(1);
             const association = associations[0];
-            
+
             // Should involve kafka.md
             expect([association.sourceNoteId, association.targetNoteId]).toContain('kafka.md');
             // Should be associated with order-system.md (shared concept: 幂等性)
-            const otherNote = association.sourceNoteId === 'kafka.md' 
-                ? association.targetNoteId 
+            const otherNote = association.sourceNoteId === 'kafka.md'
+                ? association.targetNoteId
                 : association.sourceNoteId;
             expect(otherNote).toBe('order-system.md');
         });
@@ -287,9 +288,9 @@ describe('SimpleAssociationEngine v0.6.0', () => {
             });
 
             await engine.indexNote('kafka2.md', 'Another Kafka note', 'Kafka 2');
-            
+
             const associations = await engine.discoverAssociations();
-            
+
             // Should find associations between different notes, not self-associations
             for (const assoc of associations) {
                 expect(assoc.sourceNoteId).not.toBe(assoc.targetNoteId);
@@ -315,22 +316,22 @@ describe('SimpleAssociationEngine v0.6.0', () => {
 
             await engine.indexNote('note-single.md', 'Single concept note');
             await engine.indexNote('note-multiple.md', 'Multiple concepts note');
-            
+
             const associations = await engine.discoverAssociations();
-            
+
             // Should have multiple associations
             expect(associations.length).toBeGreaterThan(1);
-            
+
             // Check sorting: associations with more shared concepts should come first
             for (let i = 0; i < associations.length - 1; i++) {
                 const current = associations[i];
                 const next = associations[i + 1];
-                
+
                 // Either more shared concepts, or same number but higher confidence
                 expect(
                     current.sharedConcepts.length > next.sharedConcepts.length ||
                     (current.sharedConcepts.length === next.sharedConcepts.length &&
-                     current.confidence >= next.confidence)
+                        current.confidence >= next.confidence)
                 ).toBe(true);
             }
         });
@@ -362,8 +363,8 @@ describe('SimpleAssociationEngine v0.6.0', () => {
             expect(stats.totalNotes).toBe(2);
             expect(stats.totalConcepts).toBe(3); // 概念1, 概念2, 概念3
             expect(stats.avgConceptsPerNote).toBe(2); // Each note has 2 concepts
-            expect(stats.avgNotesPerConcept).toBeCloseTo(4/3); // concept1:1, concept2:2, concept3:1 = 4/3
-            
+            expect(stats.avgNotesPerConcept).toBeCloseTo(4 / 3); // concept1:1, concept2:2, concept3:1 = 4/3
+
             // Total possible associations: 2 choose 2 = 1
             expect(stats.totalAssociations).toBe(1);
         });

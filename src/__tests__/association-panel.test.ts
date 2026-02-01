@@ -3,16 +3,20 @@
  * v0.6.0: Tests for the association panel React component
  */
 
+import { describe, it, expect, vi } from 'vitest';
 import { NoteAssociation } from '@services/association-engine';
 
 // Mock React and react-dom for testing without full render
-jest.mock('react', () => ({
-    ...jest.requireActual('react'),
-    useState: jest.fn(),
-    useEffect: jest.fn(),
-    useCallback: jest.fn((fn) => fn),
-    createElement: jest.fn(),
-}));
+vi.mock('react', async () => {
+    const actual = await vi.importActual('react');
+    return {
+        ...actual,
+        useState: vi.fn(),
+        useEffect: vi.fn(),
+        useCallback: vi.fn((fn: any) => fn),
+        createElement: vi.fn(),
+    };
+});
 
 describe('AssociationPanel (v0.6.0)', () => {
     // Test data

@@ -3,16 +3,17 @@
  * Tests abstract concept extraction and quality filtering
  */
 
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { ConceptExtractor, ConceptExtractionConfig, ExtractedConcepts } from '@services/concept-extractor';
 
 // Mock fetch for API calls
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('ConceptExtractor v0.6.0 - Abstract Concept Extraction', () => {
     let extractor: ConceptExtractor;
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('Configuration Updates', () => {
@@ -27,7 +28,7 @@ describe('ConceptExtractor v0.6.0 - Abstract Concept Extraction', () => {
             };
 
             extractor = new ConceptExtractor(config);
-            
+
             // Verify extractor can be created with new config
             expect(extractor).toBeDefined();
         });
@@ -39,22 +40,22 @@ describe('ConceptExtractor v0.6.0 - Abstract Concept Extraction', () => {
             };
 
             extractor = new ConceptExtractor(config);
-            
+
             // Mock fetch to avoid actual API call
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
-                json: async () => ({ 
-                    response: JSON.stringify({ 
+                json: async () => ({
+                    response: JSON.stringify({
                         concepts: ['test', 'concept'],
                         confidences: [0.9, 0.8]
-                    }) 
+                    })
                 }),
             });
 
             // Test that extraction works with minimal config
             const content = 'Test content';
             const result = await extractor.extract(content);
-            
+
             expect(result).toBeDefined();
             expect(result.concepts).toBeDefined();
             expect(Array.isArray(result.concepts)).toBe(true);
@@ -79,7 +80,7 @@ describe('ConceptExtractor v0.6.0 - Abstract Concept Extraction', () => {
                 confidences: [0.9, 0.85, 0.8],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -96,7 +97,7 @@ Kafka通过消息的幂等性保证来确保消息不会被重复处理。
             expect(result.concepts).toContain('幂等性');
             expect(result.concepts).toContain('事件驱动');
             expect(result.concepts).toContain('数据一致性');
-            
+
             // Should NOT extract specific technology names
             expect(result.concepts).not.toContain('Kafka');
             expect(result.concepts).not.toContain('消息队列');
@@ -109,7 +110,7 @@ Kafka通过消息的幂等性保证来确保消息不会被重复处理。
                 confidences: [0.9, 0.85, 0.8],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -132,7 +133,7 @@ Event-driven architecture helps with system decoupling.`;
                 confidences: [0.9, 0.8, 0.6, 0.5], // 0.6 and 0.5 below 0.7 threshold
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -166,7 +167,7 @@ Event-driven architecture helps with system decoupling.`;
                 confidences: [0.9, 0.8, 0.7, 0.7],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -188,7 +189,7 @@ Event-driven architecture helps with system decoupling.`;
                 confidences: [0.9, 0.8, 0.8],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
@@ -222,7 +223,7 @@ Event-driven architecture helps with system decoupling.`;
 **事件溯源**是一种常见的设计模式。`;
 
             const result = await extractor.extract(content);
-            
+
             // Should extract from headers and bold text
             // Note: Rule-based extraction normalizes concepts
             expect(result.concepts).toContain('幂等性设计模式');
@@ -235,7 +236,7 @@ Event-driven architecture helps with system decoupling.`;
         it('should have lower confidence score for rule-based extraction', async () => {
             const content = `## 测试标题`;
             const result = await extractor.extract(content);
-            
+
             expect(result.confidence).toBeLessThan(0.7); // Rule-based should have lower confidence
         });
     });
@@ -251,7 +252,7 @@ Event-driven architecture helps with system decoupling.`;
             };
 
             extractor = new ConceptExtractor(v0_5_0_Config);
-            
+
             expect(extractor).toBeDefined();
             // Should not throw errors with old config
         });
@@ -263,7 +264,7 @@ Event-driven architecture helps with system decoupling.`;
                 confidences: [0.9, 0.8, 0.7],
             };
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
+            (global.fetch as Mock).mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ response: JSON.stringify(mockResponse) }),
             });
