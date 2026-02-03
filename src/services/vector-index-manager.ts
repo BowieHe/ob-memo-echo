@@ -166,6 +166,12 @@ export class VectorIndexManager {
         return combinedResults;
     }
 
+    async ensureBackendReady(): Promise<void> {
+        if (typeof (this.backend as any).ensureReady === 'function') {
+            await (this.backend as any).ensureReady();
+        }
+    }
+
     /**
      * Search in memory cache
      */

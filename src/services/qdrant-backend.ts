@@ -12,6 +12,7 @@ import {
     VECTOR_NAMES,
 } from './vector-backend';
 import { generateUUID } from '@utils/uuid';
+import { Notice } from 'obsidian';
 
 export class QdrantBackend implements VectorBackend {
     private client: QdrantClient;
@@ -81,6 +82,21 @@ export class QdrantBackend implements VectorBackend {
     ): Promise<SearchResult[]> {
         const limit = options.limit || 10;
         const prefetchLimit = limit * 2;
+
+        // Check if collection exists, if not create it with query vector dimension
+        try {
+            const collection = await this.client.getCollection(this.collectionName);
+            if (!collection.points_count || collection.points_count === 0) {
+                console.log('[Qdrant] Collection is empty, returning empty results');
+                return [];
+            }
+        } catch (error: any) {
+            console.log('[Qdrant] Collection does not exist, creating with query dimension');
+            const dimension = queryVector.length;
+            await this.ensureCollection(dimension);
+            console.log('[Qdrant] Collection created, but empty, returning empty results');
+            return [];
+        }
 
         // Build filter condition if tags provided
         let filterCondition: any = undefined;
@@ -175,6 +191,31 @@ export class QdrantBackend implements VectorBackend {
             this.vectorSize = null;
         } catch (error) {
             // Collection might not exist, ignore
+        }
+    }
+
+    async ensureReady(): Promise<void> {
+        try {
+            await this.flush();
+        } catch (error: any) {
+            if (error.message?.includes('ECONNREFUSED') || error.message?.includes('Connection refused')) {
+                new Notice('❌ Qdrant 服务未运行，请确保 Qdrant 已启动');
+            } else if (error.message?.includes('Not Found') || error.message?.includes('404')) {
+                console.log('[Qdrant] Collection not found, will be created on next operation');
+            } else {
+                console.error('[Qdrant] Error ensuring ready:', error);
+            }
+            throw error;
+        }
+    }
+
+    private async flush(): Promise<void> {
+        try {
+            const collection = await this.client.getCollection(this.collectionName);
+            console.log('[Qdrant] Collection exists:', collection.config);
+        } catch (error) {
+            console.log('[Qdrant] Collection does not exist, will be created on next upsert');
+            // Collection will be created on first upsert
         }
     }
 }

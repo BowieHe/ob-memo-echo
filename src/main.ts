@@ -4,7 +4,7 @@ import { AssociationView } from './association-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
 import type { VectorBackend } from './services/vector-backend';
-import { QdrantBackend } from './backends/qdrant-backend';
+import { QdrantBackend } from './services/qdrant-backend';
 import { Chunker } from './services/chunker';
 import { MetadataExtractor } from './services/metadata-extractor';
 import { VectorIndexManager } from './services/vector-index-manager';

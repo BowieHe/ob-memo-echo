@@ -2,7 +2,10 @@ import React, { useState, useEffect } from "react";
 import type { SearchResult } from "@services/vector-backend";
 import { VectorIndexManager } from "@services/vector-index-manager";
 
-const DatabaseIcon: React.FC<{ size?: number; className?: string }> = ({ size = 20, className }) => (
+const DatabaseIcon: React.FC<{ size?: number; className?: string }> = ({
+    size = 20,
+    className,
+}) => (
     <svg
         width={size}
         height={size}
@@ -65,9 +68,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [mode]);
 
     const handleSearch = async (query: string) => {
-        setSearchQuery(query);
         if (!query.trim()) {
+            setSearchQuery("");
             setMode("ambient");
+            setSearchResults([]);
             return;
         }
 
@@ -80,6 +84,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             console.error("Search failed", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleSearchButtonClick = async () => {
+        await handleSearch(searchQuery);
+    };
+
+    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            await handleSearch(searchQuery);
         }
     };
 
@@ -128,15 +142,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="text"
                     placeholder="Search your notes..."
                     value={searchQuery}
-                    onChange={(e) => handleSearch(e.target.value)}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
                 />
+                <button
+                    onClick={handleSearchButtonClick}
+                    className="memo-echo-search-btn"
+                    disabled={isLoading}
+                    title="搜索 (Enter)"
+                >
+                    <span style={{ fontSize: "14px", lineHeight: "1" }}>🔍</span>
+                </button>
                 {mode === "search" && (
                     <button
                         onClick={handleClearSearch}
                         className="memo-echo-clear-btn"
                         title="Clear Search"
                     >
-                        ✕
+                        <span style={{ fontSize: "14px", lineHeight: "1" }}>✕</span>
                     </button>
                 )}
                 <button
@@ -152,8 +175,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </span>
                     ) : (
                         <span className="memo-echo-index-btn-content">
-                            <DatabaseIcon size={16} className="memo-echo-index-icon" />
-                            <span className="memo-echo-index-text">索引当前笔记</span>
+                            <DatabaseIcon
+                                size={14}
+                                className="memo-echo-index-icon"
+                            />
                         </span>
                     )}
                 </button>
