@@ -693,6 +693,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
@@ -703,9 +704,15 @@
     font-size: 16px;
     font-weight: 600;
     color: var(--text-normal);
+    flex: 1;
 }
 
-/* Refresh Button */
+/* Panel Header Buttons */
+.memo-echo-panel-header .memo-echo-concept-actions {
+    display: flex;
+    gap: 4px;
+}
+
 .memo-echo-panel-header .memo-echo-icon-btn {
     padding: 4px 8px;
     font-size: 16px;

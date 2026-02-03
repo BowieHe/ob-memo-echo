@@ -89,7 +89,6 @@ describe('AssociationPanel (v0.6.0)', () => {
             expect(typeof validProps.onDeleteConcept).toBe('function');
             expect(typeof validProps.onAcceptAll).toBe('function');
             expect(typeof validProps.onClearRecent).toBe('function');
-            expect(typeof validProps.onRefresh).toBe('function');
             expect(typeof validProps.onOpenFile).toBe('function');
         });
     });

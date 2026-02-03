@@ -103,26 +103,6 @@ export class AssociationView extends ItemView {
         // Build the children array
         const children: React.ReactElement[] = [];
 
-        // v0.9.0: Add association action buttons
-        children.push(
-            React.createElement('div', { className: 'memo-echo-concept-actions' }, [
-                React.createElement('button', {
-                    key: 'associate-current',
-                    className: 'memo-echo-btn memo-echo-btn-success',
-                    onClick: this.handleAssociateCurrent,
-                    disabled: this.isLoading,
-                    title: '提取当前页面的概念和创建关联',
-                }, '📝 关联当前页面'),
-                React.createElement('button', {
-                    key: 'associate-all',
-                    className: 'memo-echo-btn memo-echo-btn-success',
-                    onClick: this.handleAssociateAll,
-                    disabled: this.isLoading,
-                    title: '批量提取所有页面的概念和创建关联',
-                }, '📚 关联全部页面'),
-            ])
-        );
-
         // v0.9.0: Add concept confirmation panel if concepts are available
         if (this.currentNote && this.extractedConcepts.length > 0) {
             children.push(
@@ -149,7 +129,6 @@ export class AssociationView extends ItemView {
                 onDeleteConcept: this.handleDeleteConcept,
                 onAcceptAll: this.handleAcceptAll,
                 onClearRecent: this.handleClearRecent,
-                onRefresh: this.handleManualScan,
                 onOpenFile: this.handleOpenFile,
                 onAssociateCurrent: this.handleAssociateCurrent,
                 onAssociateAll: this.handleAssociateAll,
@@ -217,10 +196,6 @@ export class AssociationView extends ItemView {
             this.isLoading = false;
             this.renderReact();
         }
-    };
-
-    private handleManualScan = async (): Promise<void> => {
-        await this.refreshAssociations({ scan: true });
     };
 
     private async scanAllFiles(files: TFile[], batchSize: number): Promise<void> {

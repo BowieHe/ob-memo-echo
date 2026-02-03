@@ -14,7 +14,6 @@ export interface AssociationPanelProps {
     onDeleteConcept: (association: NoteAssociation, concept: string) => void;
     onAcceptAll: () => Promise<void>;
     onClearRecent: () => Promise<void>;
-    onRefresh: () => Promise<void>;
     onOpenFile: (noteId: string) => void;
     onAssociateCurrent: () => Promise<void>;
     onAssociateAll: () => Promise<void>;
@@ -28,7 +27,6 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     onDeleteConcept,
     onAcceptAll,
     onClearRecent,
-    onRefresh,
     onOpenFile,
     onAssociateCurrent,
     onAssociateAll,
@@ -76,14 +74,24 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
         <div className="memo-echo-association-panel">
             <div className="memo-echo-panel-header">
                 <h3>🔗 关联建议</h3>
-                <button
-                    className="memo-echo-icon-btn"
-                    onClick={onRefresh}
-                    disabled={isLoading}
-                    title="刷新关联"
-                >
-                    🔄
-                </button>
+                <div className="memo-echo-concept-actions">
+                    <button
+                        className="memo-echo-icon-btn"
+                        onClick={onAssociateCurrent}
+                        disabled={isLoading}
+                        title="提取当前页面的概念和创建关联"
+                    >
+                        📄
+                    </button>
+                    <button
+                        className="memo-echo-icon-btn"
+                        onClick={onAssociateAll}
+                        disabled={isLoading}
+                        title="批量提取所有页面的概念和创建关联"
+                    >
+                        📚
+                    </button>
+                </div>
             </div>
 
             {isLoading && (
@@ -144,25 +152,6 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                     </div>
                 </>
             )}
-
-            {/* <div className="memo-echo-concept-actions">
-                <button
-                    className="memo-echo-btn memo-echo-btn-success"
-                    onClick={onAssociateCurrent}
-                    disabled={isLoading}
-                    title="提取当前页面的概念和创建关联"
-                >
-                    📝 关联当前页面
-                </button>
-                <button
-                    className="memo-echo-btn memo-echo-btn-success"
-                    onClick={onAssociateAll}
-                    disabled={isLoading}
-                    title="批量提取所有页面的概念和创建关联"
-                >
-                    📚 关联全部页面
-                </button>
-            </div> */}
         </div>
     );
 };
