@@ -1,12 +1,16 @@
 /**
  * AssociationView - Obsidian sidebar view for note associations
  * v0.6.0: Smart association discovery and management
+ * v0.9.0: Added concept confirmation panel
  */
 
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { AssociationPanel } from './components/AssociationPanel';
+import { ConceptConfirmationPanel } from './components/ConceptConfirmationPanel';
+import type { ConfirmedConcept } from '@core/types/concept';
+import type { ExtractedConceptWithMatch } from '@core/types/concept';
 import { SimpleAssociationEngine, NoteAssociation } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
 import type { MemoEchoSettings } from './settings';
@@ -21,10 +25,17 @@ export class AssociationView extends ItemView {
     private frontmatterService: FrontmatterService;
     private associationPreferences: AssociationPreferences;
     private getSettings: () => MemoEchoSettings;
+    private handleCurrentFileAssociation: () => Promise<void>;
+    private handleAllFilesAssociation: () => Promise<void>;
 
     // State
     private associations: NoteAssociation[] = [];
     private isLoading = false;
+
+    // v0.9.0: Concept confirmation state
+    private extractedConcepts: ExtractedConceptWithMatch[] = [];
+    private currentNote: { path: string; title: string } | null = null;
+    private conceptEventListener: ((event: CustomEvent<any>) => void) | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -32,12 +43,16 @@ export class AssociationView extends ItemView {
         frontmatterService: FrontmatterService,
         associationPreferences: AssociationPreferences,
         getSettings: () => MemoEchoSettings,
+        handleCurrentFileAssociation: () => Promise<void>,
+        handleAllFilesAssociation: () => Promise<void>,
     ) {
         super(leaf);
         this.associationEngine = associationEngine;
         this.frontmatterService = frontmatterService;
         this.associationPreferences = associationPreferences;
         this.getSettings = getSettings;
+        this.handleCurrentFileAssociation = handleCurrentFileAssociation;
+        this.handleAllFilesAssociation = handleAllFilesAssociation;
     }
 
     getViewType(): string {
@@ -60,10 +75,18 @@ export class AssociationView extends ItemView {
         // Initial render
         this.renderReact();
 
+        // v0.9.0: Setup concept extraction event listener
+        this.setupConceptEventListener();
+
         await this.refreshAssociations({ scan: false });
     }
 
     async onClose(): Promise<void> {
+        // v0.9.0: Clean up concept event listener
+        if (this.conceptEventListener) {
+            window.removeEventListener('memo-echo:concepts-extracted', this.conceptEventListener);
+        }
+
         if (this.root) {
             this.root.unmount();
             this.root = null;
@@ -76,8 +99,49 @@ export class AssociationView extends ItemView {
         }
 
         this.root = createRoot(this.container);
-        this.root.render(
+
+        // Build the children array
+        const children: React.ReactElement[] = [];
+
+        // v0.9.0: Add association action buttons
+        children.push(
+            React.createElement('div', { className: 'memo-echo-concept-actions' }, [
+                React.createElement('button', {
+                    key: 'associate-current',
+                    className: 'memo-echo-btn memo-echo-btn-success',
+                    onClick: this.handleAssociateCurrent,
+                    disabled: this.isLoading,
+                    title: '提取当前页面的概念和创建关联',
+                }, '📝 关联当前页面'),
+                React.createElement('button', {
+                    key: 'associate-all',
+                    className: 'memo-echo-btn memo-echo-btn-success',
+                    onClick: this.handleAssociateAll,
+                    disabled: this.isLoading,
+                    title: '批量提取所有页面的概念和创建关联',
+                }, '📚 关联全部页面'),
+            ])
+        );
+
+        // v0.9.0: Add concept confirmation panel if concepts are available
+        if (this.currentNote && this.extractedConcepts.length > 0) {
+            children.push(
+                React.createElement(ConceptConfirmationPanel, {
+                    key: 'concept-confirmation',
+                    notePath: this.currentNote.path,
+                    noteTitle: this.currentNote.title,
+                    extractedConcepts: this.extractedConcepts,
+                    onApply: this.handleConceptsApply,
+                    onSkip: this.handleConceptsSkip,
+                    onClear: this.handleConceptsClear,
+                })
+            );
+        }
+
+        // Add association panel
+        children.push(
             React.createElement(AssociationPanel, {
+                key: 'association',
                 associations: this.associations,
                 isLoading: this.isLoading,
                 onAccept: this.handleAccept,
@@ -87,7 +151,14 @@ export class AssociationView extends ItemView {
                 onClearRecent: this.handleClearRecent,
                 onRefresh: this.handleManualScan,
                 onOpenFile: this.handleOpenFile,
+                onAssociateCurrent: this.handleAssociateCurrent,
+                onAssociateAll: this.handleAssociateAll,
             })
+        );
+
+        // Render with a container div
+        this.root.render(
+            React.createElement('div', { className: 'association-view-content' }, children)
         );
     }
 
@@ -391,6 +462,81 @@ export class AssociationView extends ItemView {
         if (file && file instanceof TFile) {
             const leaf = this.app.workspace.getLeaf(false);
             leaf.openFile(file);
+        }
+    };
+
+    /**
+     * v0.9.0: Setup concept extraction event listener
+     */
+    private setupConceptEventListener(): void {
+        // Create and store the event listener
+        this.conceptEventListener = ((event: CustomEvent<{
+            note: { path: string; title: string; content: string };
+            concepts: ExtractedConceptWithMatch[];
+        }>) => {
+            const { note, concepts } = event.detail;
+            this.currentNote = { path: note.path, title: note.title };
+            this.extractedConcepts = concepts;
+            this.renderReact();
+        }) as EventListener;
+
+        window.addEventListener('memo-echo:concepts-extracted', this.conceptEventListener);
+    }
+
+    /**
+     * v0.9.0: Handle concept apply
+     */
+    private handleConceptsApply = async (concepts: ConfirmedConcept[]): Promise<void> => {
+        console.log('[AssociationView] Concepts to apply:', concepts);
+
+        // This will be handled by main.ts through the memo-echo:concepts-apply event
+        // Just clear the local state here
+        this.extractedConcepts = [];
+        this.currentNote = null;
+        this.renderReact();
+
+        // Dispatch event for main.ts to handle
+        window.dispatchEvent(new CustomEvent('memo-echo:concepts-apply', { detail: concepts }));
+    };
+
+    /**
+     * v0.9.0: Handle concept skip
+     */
+    private handleConceptsSkip = (): void => {
+        console.log('[AssociationView] Concepts skipped');
+        this.extractedConcepts = [];
+        this.currentNote = null;
+        this.renderReact();
+
+        // Dispatch event for main.ts
+        window.dispatchEvent(new CustomEvent('memo-echo:concepts-skip'));
+    };
+
+    /**
+     * v0.9.0: Handle concept clear
+     */
+    private handleConceptsClear = (): void => {
+        console.log('[AssociationView] Concepts cleared');
+        this.extractedConcepts = [];
+        this.currentNote = null;
+        this.renderReact();
+    };
+
+    /**
+     * Handle association for current file
+     */
+    private handleAssociateCurrent = async (): Promise<void> => {
+        if (this.handleCurrentFileAssociation) {
+            await this.handleCurrentFileAssociation();
+        }
+    };
+
+    /**
+     * Handle association for all files
+     */
+    private handleAssociateAll = async (): Promise<void> => {
+        if (this.handleAllFilesAssociation) {
+            await this.handleAllFilesAssociation();
         }
     };
 }

@@ -3,7 +3,7 @@
  * v0.5.0: Uses VectorBackend interface for multi-backend support
  */
 
-import type { VectorBackend, MultiVectorItem } from '@backends/vector-backend';
+import type { VectorBackend, MultiVectorItem } from './vector-backend';
 import { VECTOR_NAMES } from '@core/constants';
 import type { QueuedChunk, MultiVectorQueuedChunk, PersistQueueConfig, QueueStats } from '@core/types/indexing';
 

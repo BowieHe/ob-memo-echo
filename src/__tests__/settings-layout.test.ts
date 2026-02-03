@@ -18,6 +18,7 @@ describe('MemoEchoSettingTab layout', () => {
                     avgConceptsPerNote: 0,
                 }),
             },
+            updateLogger: vi.fn(),
         } as any;
 
         const tab = new MemoEchoSettingTab(app, plugin);

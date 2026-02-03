@@ -1,9 +1,9 @@
-import { Plugin } from 'obsidian';
+import { Plugin, TFile, Notice } from 'obsidian';
 import { UnifiedSearchView } from './unified-search-view';
 import { AssociationView } from './association-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
 import { EmbeddingService } from './services/embedding-service';
-import type { VectorBackend } from './backends/vector-backend';
+import type { VectorBackend } from './services/vector-backend';
 import { QdrantBackend } from './backends/qdrant-backend';
 import { Chunker } from './services/chunker';
 import { MetadataExtractor } from './services/metadata-extractor';
@@ -12,8 +12,11 @@ import { VIEW_TYPE_UNIFIED_SEARCH, VIEW_TYPE_ASSOCIATION } from './core/constant
 import { ParagraphDetector } from './services/paragraph-detector';
 import { FrontmatterService } from './services/frontmatter-service';
 import { ConceptExtractor } from './services/concept-extractor';
+import { ConceptExtractionPipeline } from './services/concept-extraction-pipeline';
 import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
+import type { ConceptExtractionSettings, ConfirmedConcept } from './core/types/concept';
+import { createLogger, type Logger } from './utils/logger';
 
 export default class MemoEchoPlugin extends Plugin {
     private unifiedSearchView: UnifiedSearchView | null = null;
@@ -33,10 +36,12 @@ export default class MemoEchoPlugin extends Plugin {
     // v0.5.0 services
     frontmatterService: FrontmatterService;
     conceptExtractor: ConceptExtractor;
+    conceptExtractionPipeline: ConceptExtractionPipeline;
 
     // v0.6.0 services
     associationEngine: SimpleAssociationEngine;
     associationPreferences: AssociationPreferences;
+    logger: Logger;
 
     async onload() {
         console.log('Loading Memo Echo Plugin v0.6.0');
@@ -80,6 +85,8 @@ export default class MemoEchoPlugin extends Plugin {
         });
         console.log('🏷️ Metadata extractor initialized');
 
+        this.logger = createLogger(this.settings.debugLogging);
+
         // v0.5.0: Initialize concept extractor
         this.conceptExtractor = new ConceptExtractor({
             provider: this.settings.conceptExtractionProvider,
@@ -92,7 +99,9 @@ export default class MemoEchoPlugin extends Plugin {
             excludeGenericConcepts: this.settings.excludeGenericConcepts
                 ? this.settings.excludeGenericConcepts.split(',').map(s => s.trim()).filter(s => s.length > 0)
                 : [],
-        });
+            // v0.8.1: Language adaptation
+            language: this.settings.conceptLanguage,
+        }, this.logger);
         console.log('💡 Concept extractor initialized (v0.6.0)');
 
         // v0.6.0: Initialize association engine (before indexManager)
@@ -127,9 +136,17 @@ export default class MemoEchoPlugin extends Plugin {
         // v0.5.0: Initialize frontmatter service
         this.frontmatterService = new FrontmatterService(
             this.app,
-            this.settings.conceptPageFolder
+            this.settings.conceptPagePrefix
         );
         console.log('📝 Frontmatter service initialized');
+
+        this.conceptExtractionPipeline = new ConceptExtractionPipeline(
+            this.app,
+            this.conceptExtractor,
+            this.frontmatterService,
+            this.getConceptExtractionSettings(),
+            this.logger
+        );
 
         // Register the unified search view (combines search + recommendations)
         this.registerView(
@@ -154,6 +171,8 @@ export default class MemoEchoPlugin extends Plugin {
                     this.frontmatterService,
                     this.associationPreferences,
                     () => this.settings,
+                    this.handleCurrentFileAssociation,
+                    this.handleAllFilesAssociation,
                 );
                 return this.associationView;
             }
@@ -189,6 +208,9 @@ export default class MemoEchoPlugin extends Plugin {
 
         // v0.2.0: Setup paragraph detector
         this.setupParagraphDetector();
+
+        // Setup concept event listeners
+        this.setupConceptEventListeners();
 
         // Add settings tab
         this.addSettingTab(new MemoEchoSettingTab(this.app, this));
@@ -246,28 +268,34 @@ export default class MemoEchoPlugin extends Plugin {
 
             await this.indexManager.indexFile(activeFile.path, content);
 
-            if (!this.settings.injectConcepts) {
-                console.log('[MemoEcho] Concept injection disabled; skipping frontmatter write');
-                return;
-            }
-
-            let concepts = this.associationEngine.getNoteConcepts(activeFile.path);
-            if (!concepts || concepts.length === 0) {
-                const extracted = await this.conceptExtractor.extract(content, activeFile.basename);
-                concepts = extracted.concepts;
-            }
-
-            if (!concepts || concepts.length === 0) {
-                console.warn('[MemoEcho] No concepts extracted; skipping frontmatter write');
-                return;
-            }
-
-            await this.frontmatterService.updateAfterIndexing(activeFile, concepts);
-            console.log('[MemoEcho] Frontmatter updated with concepts:', concepts.length);
+            console.log('[MemoEcho] Index completed:', activeFile.path);
         } catch (error) {
             console.error('[MemoEcho] Failed to index current file:', error);
         }
     };
+
+    private getConceptExtractionSettings(): ConceptExtractionSettings {
+        return {
+            enableConceptExtraction: this.settings.enableConceptExtraction,
+            injectToFrontmatter: this.settings.injectToFrontmatter,
+            autoCreateConceptPage: this.settings.autoCreateConceptPage,
+            conceptPagePrefix: this.settings.conceptPagePrefix,
+            conceptCountRules: this.settings.conceptCountRules,
+            skipRules: this.settings.skipRules,
+            conceptDictionaryPath: this.settings.conceptDictionaryPath,
+        };
+    }
+
+    updateConceptExtractionSettings(): void {
+        this.frontmatterService.updateConceptPagePrefix(this.settings.conceptPagePrefix);
+        this.conceptExtractionPipeline.updateSettings(this.getConceptExtractionSettings());
+    }
+
+    updateLogger(): void {
+        this.logger = createLogger(this.settings.debugLogging);
+        this.conceptExtractor.setLogger(this.logger);
+        this.conceptExtractionPipeline.setLogger(this.logger);
+    }
 
     // v0.6.0: Activate association view
     async activateAssociationView() {
@@ -289,6 +317,147 @@ export default class MemoEchoPlugin extends Plugin {
         if (leaf) {
             workspace.revealLeaf(leaf);
         }
+    }
+
+    /**
+     * Handle association for current file
+     */
+    private handleCurrentFileAssociation = async (): Promise<void> => {
+        const activeFile = this.app.workspace.getActiveFile();
+
+        if (!activeFile) {
+            new Notice('❌ 没有打开的文件');
+            return;
+        }
+
+        console.log('[MemoEcho] Association current file requested:', activeFile.path);
+        try {
+            const content = await this.app.vault.read(activeFile);
+            const tags = this.app.metadataCache.getFileCache(activeFile)?.tags?.map((t) => t.tag) || [];
+
+            const result = await this.conceptExtractionPipeline.extract({
+                path: activeFile.path,
+                title: activeFile.basename,
+                content,
+                tags,
+            });
+
+            if (result.skipped || !result.concepts || result.concepts.length === 0) {
+                new Notice('ℹ️ 当前文件没有提取到概念');
+                return;
+            }
+
+            // Dispatch event to association view
+            window.dispatchEvent(new CustomEvent('memo-echo:concepts-extracted', {
+                detail: {
+                    note: {
+                        path: activeFile.path,
+                        title: activeFile.basename,
+                        content,
+                    },
+                    concepts: result.concepts,
+                },
+            }));
+
+            new Notice(`💡 有 ${result.concepts.length} 个概念待确认`);
+
+            (this as any).pendingConceptFile = activeFile;
+        } catch (error) {
+            console.error('[MemoEcho] Failed to extract concepts from current file:', error);
+            new Notice(`❌ 提取概念失败: ${error.message}`);
+        }
+    };
+
+    /**
+     * Handle association for all files
+     */
+    private handleAllFilesAssociation = async (): Promise<void> => {
+        const files = this.app.vault.getMarkdownFiles();
+
+        if (files.length === 0) {
+            new Notice('ℹ️ 没有可索引的文件');
+            return;
+        }
+
+        console.log('[MemoEcho] Association all files requested');
+        new Notice(`🔄 开始批量提取概念，共 ${files.length} 个文件`);
+
+        let processedCount = 0;
+        let conceptCount = 0;
+
+        try {
+            for (const file of files) {
+                try {
+                    const content = await this.app.vault.read(file);
+                    const tags = this.app.metadataCache.getFileCache(file)?.tags?.map((t) => t.tag) || [];
+
+                    const result = await this.conceptExtractionPipeline.extract({
+                        path: file.path,
+                        title: file.basename,
+                        content,
+                        tags,
+                    });
+
+                    if (!result.skipped && result.concepts && result.concepts.length > 0) {
+                        conceptCount += result.concepts.length;
+
+                        window.dispatchEvent(new CustomEvent('memo-echo:concepts-extracted', {
+                            detail: {
+                                note: {
+                                    path: file.path,
+                                    title: file.basename,
+                                    content,
+                                },
+                                concepts: result.concepts,
+                            },
+                        }));
+
+                        (this as any).pendingConceptFile = file;
+                    }
+
+                    processedCount++;
+                } catch (error) {
+                    console.warn(`Failed to process file ${file.path}:`, error);
+                    // Skip files with errors
+                }
+            }
+
+            new Notice(`✅ 批量提取完成: 已处理 ${processedCount} 个文件，提取 ${conceptCount} 个概念`);
+        } catch (error) {
+            console.error('[MemoEcho] Failed to batch extract concepts:', error);
+            new Notice(`❌ 批量提取失败: ${error.message}`);
+        }
+    };
+
+    /**
+     * Setup concept event listeners
+     */
+    private setupConceptEventListeners() {
+        // Listen for concept apply events from sidebar
+        window.addEventListener('memo-echo:concepts-apply', async (event: CustomEvent<ConfirmedConcept[]>) => {
+            const concepts = event.detail;
+            const pendingFile = (this as any).pendingConceptFile as TFile | undefined;
+
+            if (!pendingFile) {
+                console.warn('[MemoEcho] No pending file for concept application');
+                return;
+            }
+
+            try {
+                await this.conceptExtractionPipeline.apply(pendingFile, concepts);
+                console.log('[MemoEcho] Concepts applied:', concepts.length);
+            } catch (error) {
+                console.error('[MemoEcho] Failed to apply concepts:', error);
+            } finally {
+                delete (this as any).pendingConceptFile;
+            }
+        });
+
+        // Listen for concept skip events
+        window.addEventListener('memo-echo:concepts-skip', () => {
+            console.log('[MemoEcho] Concept extraction skipped by user');
+            delete (this as any).pendingConceptFile;
+        });
     }
 
     /**

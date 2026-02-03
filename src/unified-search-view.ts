@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { VectorIndexManager } from './services/vector-index-manager';
-import type { SearchResult } from './backends/vector-backend';
+import type { SearchResult } from './services/vector-backend';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Sidebar } from './components/Sidebar';

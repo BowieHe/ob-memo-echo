@@ -601,6 +601,68 @@
     background-color: var(--background-modifier-hover);
 }
 
+.memo-echo-index-primary-btn {
+    background: #F97316;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    padding: 0 16px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition:
+        background-color 0.2s ease,
+        transform 0.15s ease,
+        opacity 0.2s ease;
+}
+
+.memo-echo-index-primary-btn:hover:not(:disabled) {
+    background-color: #EA580C;
+    transform: scale(1.02);
+}
+
+.memo-echo-index-primary-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.memo-echo-index-primary-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.memo-echo-index-btn-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.memo-echo-index-icon {
+    flex-shrink: 0;
+}
+
+.memo-echo-index-text {
+    white-space: nowrap;
+}
+
+.memo-echo-index-btn-content .memo-echo-spinner {
+    animation: memo-echo-spin 1s linear infinite;
+}
+
+@keyframes memo-echo-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .memo-echo-results-container {
     flex: 1;
     overflow-y: auto;
@@ -1009,4 +1071,155 @@
 
 .memo-echo-association-list::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+}
+
+/* ============================================================
+   Concept Confirmation Panel Styles (v0.9.0)
+   ============================================================ */
+
+.memo-echo-concept-panel {
+    margin-bottom: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-secondary);
+    overflow: hidden;
+}
+
+.memo-echo-concept-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--background-modifier-border);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.memo-echo-concept-panel-header:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.memo-echo-concept-panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.memo-echo-concept-panel-toggle {
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+
+.memo-echo-concept-panel-content {
+    padding: 12px;
+}
+
+.memo-echo-concept-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.memo-echo-concept-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.memo-echo-concept-item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    transition: background-color 0.2s;
+}
+
+.memo-echo-concept-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.memo-echo-concept-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.memo-echo-concept-checkbox input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+
+.memo-echo-concept-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    flex: 1;
+}
+
+.memo-echo-concept-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.memo-echo-concept-reason {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    padding-left: 24px;
+    font-style: italic;
+}
+
+.memo-echo-concept-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.memo-echo-concept-btn {
+    flex: 1;
+    min-width: 60px;
+    padding: 6px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.memo-echo-concept-btn:hover:not(:disabled) {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-concept-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.memo-echo-concept-btn-primary {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-concept-btn-primary:hover:not(:disabled) {
+    background-color: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+/* Association View Content Container (v0.9.0) */
+.association-view-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }

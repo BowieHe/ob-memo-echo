@@ -3,6 +3,8 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import type { ConceptCountRule, SkipRules } from '@core/types/concept';
+import type { ConceptLanguage } from '@core/types/extraction';
 import { buildAssociationExport } from './services/association-exporter';
 import type MemoEchoPlugin from './main';
 
@@ -25,15 +27,23 @@ export interface MemoEchoSettings {
     qdrantUrl: string;
     qdrantCollection: string;
 
-    // v0.5.0: Frontmatter & Concept settings
-    injectConcepts: boolean;           // Whether to inject concepts to frontmatter
+    // v0.5.0: Concept extraction provider
     conceptExtractionProvider: 'ollama' | 'openai' | 'rules';
-    conceptPageFolder: string;         // Folder for concept pages (default: _me)
 
     // v0.6.0: Abstract Concept Extraction settings
     focusOnAbstractConcepts: boolean;  // Focus on abstract concepts vs specific tech
     minConceptConfidence: number;      // Minimum confidence threshold for concepts
     excludeGenericConcepts: string;    // Comma-separated list of generic concepts to exclude
+
+    // v0.8.0: Concept extraction settings
+    enableConceptExtraction: boolean;
+    injectToFrontmatter: boolean;
+    autoCreateConceptPage: boolean;
+    conceptPagePrefix: string;
+    conceptCountRules: ConceptCountRule[];
+    skipRules: SkipRules;
+    conceptDictionaryPath: string;
+    conceptLanguage: 'auto' | 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de';
 
     // v0.6.0: Association management settings
     associationMinConfidence: number;          // Minimum confidence to display
@@ -42,6 +52,8 @@ export interface MemoEchoSettings {
     associationAutoScanBatchSize: number;      // Max notes to scan on auto-scan
     associationIgnoredAssociations: string[];  // Persist ignored association IDs
     associationDeletedConcepts: Record<string, string[]>; // Persist deleted concepts
+
+    debugLogging: boolean;
 }
 
 export const DEFAULT_SETTINGS: MemoEchoSettings = {
@@ -61,14 +73,32 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
     qdrantCollection: 'obsidian_notes',
 
     // v0.5.0 defaults
-    injectConcepts: true,
     conceptExtractionProvider: 'ollama',
-    conceptPageFolder: '_me',
 
     // v0.6.0 defaults
     focusOnAbstractConcepts: true,
     minConceptConfidence: 0.7,
     excludeGenericConcepts: '技术开发,总结,概述,简介,设计',
+
+    // v0.8.0 defaults
+    enableConceptExtraction: true,
+    injectToFrontmatter: true,
+    autoCreateConceptPage: false,
+    conceptPagePrefix: '_me',
+    conceptCountRules: [
+        { minChars: 0, maxChars: 199, maxConcepts: 1 },
+        { minChars: 200, maxChars: 499, maxConcepts: 2 },
+        { minChars: 500, maxChars: 999, maxConcepts: 3 },
+        { minChars: 1000, maxChars: Infinity, maxConcepts: 4 },
+    ],
+    skipRules: {
+        skipPaths: ['_me/', 'templates/', 'daily/'],
+        skipTags: ['vocabulary', 'daily', 'template', 'image-collection'],
+        minTextLength: 100,
+        maxImageRatio: 0.7,
+    },
+    conceptDictionaryPath: '_me/_concept-dictionary.json',
+    conceptLanguage: 'auto',
 
     // v0.6.0 association defaults
     associationMinConfidence: 0.5,
@@ -77,6 +107,7 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
     associationAutoScanBatchSize: 50,
     associationIgnoredAssociations: [],
     associationDeletedConcepts: {},
+    debugLogging: true,
 };
 
 export class MemoEchoSettingTab extends PluginSettingTab {
@@ -123,6 +154,22 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         this.addServiceStatusSection(group);
         this.addQdrantSection(group);
         this.addEmbeddingSection(group);
+        this.addDebugSection(group);
+    }
+
+    private addDebugSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h4', { text: '调试' });
+
+        new Setting(containerEl)
+            .setName('启用调试日志')
+            .setDesc('输出概念提取与匹配的中间日志')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.debugLogging)
+                .onChange(async (value) => {
+                    this.plugin.settings.debugLogging = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.updateLogger();
+                }));
     }
 
     private addIndexingSection(containerEl: HTMLElement): void {
@@ -584,20 +631,44 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         const conceptGroup = containerEl.createDiv('memo-echo-settings-group');
 
-        // Enable concept injection toggle
         new Setting(conceptGroup)
-            .setName('启用概念注入')
-            .setDesc('写入 frontmatter（me_concepts）')
+            .setName('启用概念提取')
+            .setDesc('使用 AI 提取高层级概念')
             .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.injectConcepts)
+                .setValue(this.plugin.settings.enableConceptExtraction)
                 .onChange(async (value) => {
-                    this.plugin.settings.injectConcepts = value;
+                    this.plugin.settings.enableConceptExtraction = value;
                     await this.plugin.saveSettings();
+                    this.plugin.updateConceptExtractionSettings();
                     this.display();
                 }));
 
-        if (this.plugin.settings.injectConcepts) {
-            // Concept extraction provider
+        if (this.plugin.settings.enableConceptExtraction) {
+            new Setting(conceptGroup)
+                .setName('注入到 frontmatter')
+                .setDesc('将概念写入 me_concepts (Wikilinks)')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.injectToFrontmatter)
+                    .onChange(async (value) => {
+                        this.plugin.settings.injectToFrontmatter = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.updateConceptExtractionSettings();
+                        this.display();
+                    }));
+
+            if (this.plugin.settings.injectToFrontmatter) {
+                new Setting(conceptGroup)
+                    .setName('自动创建概念页面')
+                    .setDesc('为新概念创建页面 (可能产生大量文件)')
+                    .addToggle(toggle => toggle
+                        .setValue(this.plugin.settings.autoCreateConceptPage)
+                        .onChange(async (value) => {
+                            this.plugin.settings.autoCreateConceptPage = value;
+                            await this.plugin.saveSettings();
+                            this.plugin.updateConceptExtractionSettings();
+                        }));
+            }
+
             new Setting(conceptGroup)
                 .setName('概念提取方式')
                 .setDesc('AI 或规则提取')
@@ -612,10 +683,38 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         this.plugin.conceptExtractor.updateConfig({ provider: value });
                     }));
 
-            // Concept page folder
             new Setting(conceptGroup)
                 .setName('概念页前缀')
-                .setDesc('固定为 _me，用于生成 [[_me/概念]]');
+                .setDesc('用于生成 [[前缀/概念]]')
+                .addText(text => text
+                    .setPlaceholder('_me')
+                    .setValue(this.plugin.settings.conceptPagePrefix)
+                    .onChange(async (value) => {
+                        this.plugin.settings.conceptPagePrefix = value || '_me';
+                        this.plugin.settings.conceptDictionaryPath = `${this.plugin.settings.conceptPagePrefix}/_concept-dictionary.json`;
+                        await this.plugin.saveSettings();
+                        this.plugin.updateConceptExtractionSettings();
+                    }));
+
+            // v0.8.1: Language adaptation settings
+            new Setting(conceptGroup)
+                .setName('概念语言')
+                .setDesc('提取概念时使用的语言 (auto: 根据笔记内容自动判断)')
+                .addDropdown(dropdown => dropdown
+                    .addOption('auto', '自动检测')
+                    .addOption('en', 'English')
+                    .addOption('zh', '中文')
+                    .addOption('ja', '日本語')
+                    .addOption('ko', '한국어')
+                    .addOption('es', 'Español')
+                    .addOption('fr', 'Français')
+                    .addOption('de', 'Deutsch')
+                    .setValue(this.plugin.settings.conceptLanguage)
+                    .onChange(async (value: ConceptLanguage) => {
+                        this.plugin.settings.conceptLanguage = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.conceptExtractor.updateConfig({ language: value });
+                    }));
 
             // v0.6.0: Abstract concept extraction settings
             containerEl.createEl('h4', { text: '抽象概念提取' });
@@ -660,6 +759,57 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         const excludeList = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
                         this.plugin.conceptExtractor.updateConfig({ excludeGenericConcepts: excludeList });
+                    }));
+
+            containerEl.createEl('h4', { text: '跳过规则' });
+
+            const skipGroup = containerEl.createDiv('memo-echo-settings-group');
+
+            new Setting(skipGroup)
+                .setName('跳过路径 (每行一个)')
+                .addTextArea(text => text
+                    .setValue(this.plugin.settings.skipRules.skipPaths.join('\n'))
+                    .onChange(async (value) => {
+                        this.plugin.settings.skipRules.skipPaths = value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                        await this.plugin.saveSettings();
+                        this.plugin.updateConceptExtractionSettings();
+                    }));
+
+            new Setting(skipGroup)
+                .setName('跳过标签 (逗号分隔)')
+                .addText(text => text
+                    .setValue(this.plugin.settings.skipRules.skipTags.join(', '))
+                    .onChange(async (value) => {
+                        this.plugin.settings.skipRules.skipTags = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        await this.plugin.saveSettings();
+                        this.plugin.updateConceptExtractionSettings();
+                    }));
+
+            new Setting(skipGroup)
+                .setName('最小文本长度')
+                .addText(text => text
+                    .setValue(this.plugin.settings.skipRules.minTextLength.toString())
+                    .onChange(async (value) => {
+                        const parsed = Number(value);
+                        if (!Number.isNaN(parsed)) {
+                            this.plugin.settings.skipRules.minTextLength = parsed;
+                            await this.plugin.saveSettings();
+                            this.plugin.updateConceptExtractionSettings();
+                        }
+                    }));
+
+            new Setting(skipGroup)
+                .setName('图片占比阈值')
+                .setDesc('0-1 之间')
+                .addText(text => text
+                    .setValue(this.plugin.settings.skipRules.maxImageRatio.toString())
+                    .onChange(async (value) => {
+                        const parsed = Number(value);
+                        if (!Number.isNaN(parsed)) {
+                            this.plugin.settings.skipRules.maxImageRatio = parsed;
+                            await this.plugin.saveSettings();
+                            this.plugin.updateConceptExtractionSettings();
+                        }
                     }));
 
             // Clear all me_* fields button
@@ -767,7 +917,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
 
             // v0.6.0: Rescan associations button
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('重新扫描关联')
                 .setDesc('清除关联索引并重新发现笔记间的关联')
                 .addButton(button => button
@@ -810,7 +960,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     }));
 
             // v0.6.0: Export association stats
-            new Setting(containerEl)
+            new Setting(associationGroup)
                 .setName('导出关联统计')
                 .setDesc('导出当前关联统计和索引概览')
                 .addButton(button => button

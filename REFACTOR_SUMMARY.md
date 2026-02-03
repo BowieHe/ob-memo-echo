@@ -143,7 +143,7 @@ import { VECTOR_NAMES } from "../core/constants";
 | 迁移的类型定义 | 30+                           |
 | 核心类型文件   | 6个                           |
 | 后端实现       | 1个 (Qdrant)                  |
-| 工具函数       | 2个 (generateUUID, rrfFusion) |
+| 工具函数       | 2个 (rrfFusion) |
 
 ---
 
@@ -385,7 +385,182 @@ grep -r "from.*services.*vector-backend\|from.*services.*constants" src/ \
 
 ---
 
-**重构完成日期**: 2026年1月31日  
-**重构阶段**: Phase 1 (类型剥离) ✅  
-**下一阶段**: Phase 2 (遗留清理) - 待执行  
+**重构完成日期**: 2026年1月31日
+**重构阶段**: Phase 1 (类型剥离) ✅
+**下一阶段**: Phase 2 (遗留清理) - 待执行
 **文档版本**: v0.6.0+
+
+---
+
+# 概念确认侧边栏集成 (2026-02-02)
+
+## 🎯 变更目标
+
+将概念确认功能从模态弹窗迁移到侧边栏内嵌面板，提升用户体验和工作流效率。
+
+### 变更动机
+
+1. **减少中断**: 模态弹窗会打断用户工作流，侧边栏集成更流畅
+2. **统一界面**: 概念确认与检索功能在同一侧边栏，界面更统一
+3. **可折叠设计**: 用户可以随时展开/折叠，不会遮挡主内容
+4. **简化交互**: 减少弹窗确认步骤，提升操作效率
+
+---
+
+## ✅ 完成的工作
+
+### 1. 创建 ConceptConfirmationPanel 组件
+
+**文件**: `src/components/ConceptConfirmationPanel.tsx`
+
+**功能**:
+- 可折叠面板设计
+- 自动展开（当新概念到达时）
+- 概念列表展示（带置信度和匹配类型）
+- 复选框选择概念
+- 简化版操作按钮: [✓ 应用选中] [✓ 全选] [✗ 清空] [▼ 折叠]
+
+**状态管理**:
+- `selected`: Set<string> - 已选择的概念
+- `isExpanded`: boolean - 面板展开状态
+
+### 2. 集成到 Sidebar 组件
+
+**文件**: `src/components/Sidebar.tsx`
+
+**变更**:
+- 添加概念提取状态: `extractedConcepts`, `currentNote`
+- 添加 `memo-echo:concepts-extracted` 事件监听器
+- 添加概念操作处理函数: `handleConceptsApply`, `handleConceptsSkip`, `handleConceptsClear`
+- 在 JSX 中渲染 ConceptConfirmationPanel（位于搜索框下方，结果上方）
+
+### 3. 修改主插件文件
+
+**文件**: `src/main.ts`
+
+**变更**:
+- 移除 `ConceptConfirmationModal` 导入
+- 修改 `indexCurrentFileWithConcepts()` 方法：
+  - 不再打开模态弹窗
+  - 改为发送 `memo-echo:concepts-extracted` 事件
+  - 存储待处理文件到 `pendingConceptFile`
+- 添加 `setupConceptEventListeners()` 方法：
+  - 监听 `memo-echo:concepts-apply` 事件并调用 `conceptExtractionPipeline.apply()`
+  - 监听 `memo-echo:concepts-skip` 事件并清理状态
+
+### 4. 添加样式
+
+**文件**: `styles.css`
+
+**新增样式类**:
+- `.memo-echo-concept-panel` - 面板容器
+- `.memo-echo-concept-panel-header` - 可点击的标题栏
+- `.memo-echo-concept-panel-content` - 面板内容
+- `.memo-echo-concept-list` - 概念列表
+- `.memo-echo-concept-item` - 单个概念项
+- `.memo-echo-concept-checkbox` - 复选框标签
+- `.memo-echo-concept-actions` - 操作按钮组
+
+### 5. 修复导入路径问题
+
+**修复的文件**:
+- `src/main.ts` - VectorBackend 导入路径
+- `src/components/Sidebar.tsx` - SearchResult 导入路径
+- `src/unified-search-view.ts` - SearchResult 导入路径
+- `src/backends/qdrant-backend.ts` - VectorBackend 导入路径
+- `src/services/vector-index-manager.ts` - VectorBackend 导入路径
+- `src/services/persist-queue.ts` - VectorBackend 导入路径
+- `src/services/qdrant-backend.ts` - generateUUID 导入
+- `src/backends/qdrant-backend.ts` - TypeScript null check
+- 测试文件: `association-integration.test.ts`, `persist-queue.test.ts`, `vector-index-manager.test.ts`
+
+---
+
+## 📊 事件流
+
+### 概念提取流程
+
+```
+用户点击"索引当前文件"按钮
+    ↓
+Sidebar → onIndexCurrent() 回调
+    ↓
+main.ts → indexCurrentFileWithConcepts()
+    ↓
+1. 调用 indexManager.indexFile()
+2. 调用 conceptExtractionPipeline.extract()
+3. 发送 memo-echo:concepts-extracted 事件
+    ↓
+Sidebar 监听事件 → 更新 extractedConcepts 状态
+    ↓
+ConceptConfirmationPanel 自动展开
+    ↓
+用户操作:
+- 点击"应用" → 发送 memo-echo:concepts-apply 事件
+- 点击"折叠" → 发送 memo-echo:concepts-skip 事件
+- 点击"清空" → 清空本地状态
+    ↓
+main.ts 监听 apply 事件 → conceptExtractionPipeline.apply()
+```
+
+---
+
+## 🔄 用户交互变化
+
+### 之前 (模态弹窗)
+
+1. 用户点击"索引当前文件"
+2. 弹窗覆盖整个界面
+3. 用户确认概念
+4. 弹窗关闭
+
+### 现在 (侧边栏面板)
+
+1. 用户点击"索引当前文件"
+2. 侧边栏面板自动展开
+3. 用户可以在不离开笔记的情况下确认概念
+4. 面板可以折叠，不遮挡内容
+
+---
+
+## 📁 文件变更统计
+
+| 操作 | 文件 |
+|------|------|
+| 新增 | `src/components/ConceptConfirmationPanel.tsx` |
+| 修改 | `src/components/Sidebar.tsx` |
+| 修改 | `src/main.ts` |
+| 修改 | `styles.css` |
+| 修复 | `src/backends/qdrant-backend.ts` (导入路径) |
+| 修复 | `src/services/qdrant-backend.ts` (导入路径) |
+| 修复 | `src/unified-search-view.ts` (导入路径) |
+| 修复 | `src/services/vector-index-manager.ts` (导入路径) |
+| 修复 | `src/services/persist-queue.ts` (导入路径) |
+| 修复 | 测试文件 (3个) |
+
+---
+
+## ✨ 改进亮点
+
+1. **非阻塞交互**: 用户可以在查看笔记的同时确认概念
+2. **状态持久化**: 未处理的概念会保留在面板中
+3. **自动展开**: 新概念到达时自动展开面板，确保用户看到
+4. **简化按钮**: MVP 版本只保留核心操作，减少复杂度
+5. **样式一致**: 与现有侧边栏组件保持一致的视觉风格
+
+---
+
+## 🧪 测试清单
+
+- [x] 构建成功 (`npm run build`)
+- [ ] 点击索引按钮后面板自动展开
+- [ ] 概念列表正确显示
+- [ ] 应用按钮正确调用 pipeline
+- [ ] 折叠时触发跳过逻辑
+- [ ] 清空按钮清空面板状态
+- [ ] 全选按钮选中所有概念
+
+---
+
+**变更完成日期**: 2026年2月2日
+**版本**: v0.9.0 (MVP)

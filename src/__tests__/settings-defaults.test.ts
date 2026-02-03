@@ -7,6 +7,10 @@ describe('DEFAULT_SETTINGS', () => {
     });
 
     it('keeps a fixed concept page prefix', () => {
-        expect(DEFAULT_SETTINGS.conceptPageFolder).toBe('_me');
+        expect(DEFAULT_SETTINGS.conceptPagePrefix).toBe('_me');
+    });
+
+    it('enables debug logging by default for development', () => {
+        expect(DEFAULT_SETTINGS.debugLogging).toBe(true);
     });
 });

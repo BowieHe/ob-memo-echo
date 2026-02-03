@@ -5,7 +5,7 @@
 
 import { MemoryCache, CachedChunk } from './memory-cache';
 import { PersistQueue, MultiVectorQueuedChunk } from './persist-queue';
-import type { VectorBackend, SearchResult } from '@backends/vector-backend';
+import type { VectorBackend, SearchResult } from './vector-backend';
 import { VECTOR_NAMES } from '@core/constants';
 import { EmbeddingService } from './embedding-service';
 import { Chunker, ChunkResult } from './chunker';
@@ -108,7 +108,6 @@ export class VectorIndexManager {
             tags: [
                 ...extractedMetadata.tags,
                 extractedMetadata.category, // Merge category into tags
-                ...extractedMetadata.concepts, // Merge concepts into tags
             ].filter(Boolean),
             word_count: chunk.content.length,
             indexedAt: Date.now(),

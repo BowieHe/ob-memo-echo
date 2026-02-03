@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PersistQueue, type QueuedChunk } from '@services/persist-queue';
-import type { VectorBackend } from '@backends/vector-backend';
+import type { VectorBackend } from '@services/vector-backend';
 
 describe('PersistQueue (v0.5.0)', () => {
     let queue: PersistQueue;

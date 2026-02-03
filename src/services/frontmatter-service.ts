@@ -10,11 +10,15 @@ export type { MemoEchoFrontmatter };
 
 export class FrontmatterService {
     private app: App;
-    private conceptPageFolder: string;
+    private conceptPagePrefix: string;
 
-    constructor(app: App, conceptPageFolder: string = '_me') {
+    constructor(app: App, conceptPagePrefix: string = '_me') {
         this.app = app;
-        this.conceptPageFolder = conceptPageFolder;
+        this.conceptPagePrefix = conceptPagePrefix;
+    }
+
+    updateConceptPagePrefix(prefix: string): void {
+        this.conceptPagePrefix = prefix;
     }
 
     /**
@@ -59,7 +63,7 @@ export class FrontmatterService {
         }
 
         // Convert to wikilink format
-        const wikilinks = concepts.map(c => `[[${this.conceptPageFolder}/${c}]]`);
+        const wikilinks = concepts.map(c => `[[${this.conceptPagePrefix}/${c}]]`);
 
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
             frontmatter.me_concepts = wikilinks;
@@ -86,7 +90,7 @@ export class FrontmatterService {
             return;
         }
 
-        const wikilinks = concepts.map(c => `[[${this.conceptPageFolder}/${c}]]`);
+        const wikilinks = concepts.map(c => `[[${this.conceptPagePrefix}/${c}]]`);
         const isoString = new Date().toISOString();
 
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {

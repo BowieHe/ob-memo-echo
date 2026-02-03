@@ -10,8 +10,8 @@ import type {
     MultiVectorItem,
     SearchResult,
     SearchOptions,
-} from './vector-backend';
-import { generateUUID } from './vector-backend';
+} from '../services/vector-backend';
+import { generateUUID } from '@utils/uuid';
 import { VECTOR_NAMES } from '@core/constants';
 
 export class QdrantBackend implements VectorBackend {
@@ -36,7 +36,7 @@ export class QdrantBackend implements VectorBackend {
         if (this.vectorSize === null) {
             this.vectorSize = item.vectors[VECTOR_NAMES.CONTENT].length;
             console.log(`[Qdrant] Auto-detected vector dimension: ${this.vectorSize}`);
-            await this.ensureCollection(this.vectorSize);
+            await this.ensureCollection(this.vectorSize!);
         }
 
         const uuid = generateUUID();

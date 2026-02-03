@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VectorIndexManager } from '@services/vector-index-manager';
-import type { VectorBackend } from '@backends/vector-backend';
+import type { VectorBackend } from '@services/vector-backend';
 import { EmbeddingService } from '@services/embedding-service';
 import { Chunker } from '@services/chunker';
 import { MetadataExtractor } from '@services/metadata-extractor';

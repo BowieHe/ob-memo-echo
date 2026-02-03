@@ -114,19 +114,13 @@ import { VECTOR_NAMES } from "../core/constants";
 
 ```
 src/backends/
-├── vector-backend.ts       # 接口定义 + 工具函数 (generateUUID, rrfFusion)
+├── vector-backend.ts       # 接口定义 + 工具函数 ( rrfFusion)
 ├── qdrant-backend.ts       # Qdrant 实现 (从 services/ 迁移)
 ```
 
 ### VectorBackend 工具函数
 
 在 `backends/vector-backend.ts` 中添加共享工具:
-
-```typescript
-/**
- * 生成 UUID v4
- */
-export function generateUUID(): string { ... }
 
 /**
  * RRF (Reciprocal Rank Fusion) 融合

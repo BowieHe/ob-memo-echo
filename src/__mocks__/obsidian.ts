@@ -80,6 +80,7 @@ export class Setting {
     addButton(_cb: (button: any) => void): this { return this; }
     addToggle(_cb: (toggle: any) => void): this { return this; }
     addText(_cb: (text: any) => void): this { return this; }
+    addTextArea(_cb: (text: any) => void): this { return this; }
     addSlider(_cb: (slider: any) => void): this { return this; }
     addDropdown(_cb: (dropdown: any) => void): this { return this; }
 }

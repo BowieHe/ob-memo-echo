@@ -10,8 +10,8 @@ import {
     SearchResult,
     SearchOptions,
     VECTOR_NAMES,
-    generateUUID,
 } from './vector-backend';
+import { generateUUID } from '@utils/uuid';
 
 export class QdrantBackend implements VectorBackend {
     private client: QdrantClient;

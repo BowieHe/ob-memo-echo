@@ -4,6 +4,12 @@
  */
 
 /**
+ * Language options for concept extraction
+ * v0.8.1: Language adaptation for concept extraction
+ */
+export type ConceptLanguage = 'auto' | 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de';
+
+/**
  * Extracted metadata from content
  */
 export interface ExtractedMetadata {
@@ -36,6 +42,18 @@ export interface ExtractedConcepts {
     conceptConfidences?: number[]; // Per-concept confidence (v0.6.0+)
 }
 
+export interface ExtractedConceptDetail {
+    name: string;
+    confidence: number;
+    reason: string;
+}
+
+export interface DetailedConceptExtraction {
+    concepts: ExtractedConceptDetail[];
+    noteType: 'article' | 'vocabulary' | 'daily' | 'image-collection' | 'template' | 'normal';
+    skipReason: string | null;
+}
+
 /**
  * Configuration for ConceptExtractor
  */
@@ -43,6 +61,7 @@ export interface ConceptExtractionConfig {
     provider: 'ollama' | 'openai' | 'rules';
     ollamaUrl?: string;
     ollamaModel?: string;
+    ollamaNumPredict?: number;
     openaiApiKey?: string;
     openaiModel?: string;
     maxConcepts?: number;
@@ -51,4 +70,7 @@ export interface ConceptExtractionConfig {
     focusOnAbstractConcepts?: boolean;      // Prioritize abstract concepts
     minConfidence?: number;                 // Minimum confidence threshold
     excludeGenericConcepts?: string[];      // Blocklist of generic concepts
+
+    // v0.8.1: Language adaptation
+    language?: ConceptLanguage;
 }

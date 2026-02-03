@@ -16,6 +16,8 @@ export interface AssociationPanelProps {
     onClearRecent: () => Promise<void>;
     onRefresh: () => Promise<void>;
     onOpenFile: (noteId: string) => void;
+    onAssociateCurrent: () => Promise<void>;
+    onAssociateAll: () => Promise<void>;
 }
 
 export const AssociationPanel: React.FC<AssociationPanelProps> = ({
@@ -28,6 +30,8 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     onClearRecent,
     onRefresh,
     onOpenFile,
+    onAssociateCurrent,
+    onAssociateAll,
 }) => {
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
@@ -140,6 +144,25 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                     </div>
                 </>
             )}
+
+            {/* <div className="memo-echo-concept-actions">
+                <button
+                    className="memo-echo-btn memo-echo-btn-success"
+                    onClick={onAssociateCurrent}
+                    disabled={isLoading}
+                    title="提取当前页面的概念和创建关联"
+                >
+                    📝 关联当前页面
+                </button>
+                <button
+                    className="memo-echo-btn memo-echo-btn-success"
+                    onClick={onAssociateAll}
+                    disabled={isLoading}
+                    title="批量提取所有页面的概念和创建关联"
+                >
+                    📚 关联全部页面
+                </button>
+            </div> */}
         </div>
     );
 };
