@@ -3,7 +3,7 @@
  * v0.6.0: Smart association discovery UI
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { NoteAssociation } from "@services/association-engine";
 
 export interface AssociationPanelProps {
@@ -11,12 +11,27 @@ export interface AssociationPanelProps {
     isLoading: boolean;
     onAccept: (association: NoteAssociation) => Promise<void>;
     onIgnore: (association: NoteAssociation) => void;
-    onDeleteConcept: (association: NoteAssociation, concept: string) => void;
-    onAcceptAll: () => Promise<void>;
-    onClearRecent: () => Promise<void>;
     onOpenFile: (noteId: string) => void;
     onAssociateCurrent: () => Promise<void>;
     onAssociateAll: () => Promise<void>;
+    batchProgress?: {
+        totalFiles: number;
+        processedFiles: number;
+        totalConcepts: number;
+        isProcessing: boolean;
+    };
+    extractedConcepts?: Array<{
+        notePath: string;
+        noteTitle: string;
+        concepts: any[];
+    }>;
+    onApplyConcepts: (selectedGroups: Array<{
+        notePath: string;
+        concepts: any[];
+    }>) => Promise<void>;
+    onClearConcepts: () => void;
+    isBatchProcessing: boolean;
+    onStopBatch: () => void;
 }
 
 export const AssociationPanel: React.FC<AssociationPanelProps> = ({
@@ -24,262 +39,258 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     isLoading,
     onAccept,
     onIgnore,
-    onDeleteConcept,
-    onAcceptAll,
-    onClearRecent,
     onOpenFile,
     onAssociateCurrent,
     onAssociateAll,
+    batchProgress,
+    extractedConcepts,
+    onApplyConcepts,
+    onClearConcepts,
+    isBatchProcessing,
+    onStopBatch,
 }) => {
-    const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-
-    const handleAccept = useCallback(
-        async (association: NoteAssociation) => {
-            const id = `${association.sourceNoteId}-${association.targetNoteId}`;
-            setProcessingIds((prev) => new Set(prev).add(id));
-            try {
-                await onAccept(association);
-            } finally {
-                setProcessingIds((prev) => {
-                    const next = new Set(prev);
-                    next.delete(id);
-                    return next;
-                });
-            }
-        },
-        [onAccept],
-    );
-
-    const handleIgnore = useCallback(
-        (association: NoteAssociation) => {
-            onIgnore(association);
-        },
-        [onIgnore],
-    );
-
-    const handleAcceptAll = useCallback(async () => {
-        setProcessingIds(
-            new Set(
-                associations.map((a) => `${a.sourceNoteId}-${a.targetNoteId}`),
-            ),
-        );
-        try {
-            await onAcceptAll();
-        } finally {
-            setProcessingIds(new Set());
-        }
-    }, [onAcceptAll, associations]);
-
     return (
         <div className="memo-echo-association-panel">
+            {/* Header */}
             <div className="memo-echo-panel-header">
                 <h3>🔗 关联建议</h3>
                 <div className="memo-echo-concept-actions">
                     <button
                         className="memo-echo-icon-btn"
                         onClick={onAssociateCurrent}
-                        disabled={isLoading}
+                        disabled={isLoading || isBatchProcessing}
                         title="提取当前页面的概念和创建关联"
                     >
                         📄
                     </button>
                     <button
                         className="memo-echo-icon-btn"
-                        onClick={onAssociateAll}
+                        onClick={isBatchProcessing ? onStopBatch : onAssociateAll}
                         disabled={isLoading}
-                        title="批量提取所有页面的概念和创建关联"
+                        title={isBatchProcessing ? "停止批量提取" : "批量提取所有页面的概念和创建关联"}
                     >
-                        📚
+                        {isBatchProcessing ? '🛑' : '📚'}
                     </button>
                 </div>
             </div>
 
-            {isLoading && (
-                <div className="memo-echo-loading">
-                    <span className="memo-echo-spinner">⏳</span>
-                    正在发现关联...
-                </div>
+            {/* 进度条 */}
+            {batchProgress?.isProcessing && <BatchProgressBar progress={batchProgress} />}
+
+            {/* 概念列表 */}
+            {extractedConcepts && extractedConcepts.length > 0 && (
+                <ConceptListInline
+                    concepts={extractedConcepts}
+                    onApply={onApplyConcepts}
+                    onClear={onClearConcepts}
+                />
             )}
 
-            {!isLoading && associations.length === 0 && (
+            {/* 空状态 */}
+            {!isLoading && !batchProgress?.isProcessing && (!extractedConcepts || extractedConcepts.length === 0) && (
                 <div className="memo-echo-empty">
-                    <p>暂无关联建议</p>
+                    <p>暂无未关联的概念</p>
                     <p className="memo-echo-hint">
-                        索引更多笔记后，AI 将自动发现共享概念的笔记对
+                        点击 📚 批量提取或 📄 提取当前笔记的概念
                     </p>
                 </div>
-            )}
-
-            {!isLoading && associations.length > 0 && (
-                <>
-                    <div className="memo-echo-association-count">
-                        发现 {associations.length} 个潜在关联
-                    </div>
-
-                    <div className="memo-echo-association-list">
-                        {associations.map((association) => (
-                            <AssociationCard
-                                key={`${association.sourceNoteId}-${association.targetNoteId}`}
-                                association={association}
-                                isProcessing={processingIds.has(
-                                    `${association.sourceNoteId}-${association.targetNoteId}`,
-                                )}
-                                onAccept={() => handleAccept(association)}
-                                onIgnore={() => handleIgnore(association)}
-                                onDeleteConcept={(concept) =>
-                                    onDeleteConcept(association, concept)
-                                }
-                                onOpenFile={onOpenFile}
-                            />
-                        ))}
-                    </div>
-
-                    <div className="memo-echo-bulk-actions">
-                        <button
-                            className="memo-echo-btn memo-echo-btn-primary"
-                            onClick={handleAcceptAll}
-                            disabled={isLoading || processingIds.size > 0}
-                        >
-                            ✅ 接受所有建议
-                        </button>
-                        <button
-                            className="memo-echo-btn memo-echo-btn-warning"
-                            onClick={onClearRecent}
-                            disabled={isLoading}
-                        >
-                            🗑️ 清除最近添加
-                        </button>
-                    </div>
-                </>
             )}
         </div>
     );
 };
 
 /**
- * ConceptBadge - Markdown-style code formatted concept with hover delete
+ * ConceptListInline - Inline concept list in AssociationPanel
  */
-interface ConceptBadgeProps {
-    concept: string;
-    onDelete: () => void;
+interface ConceptListInlineProps {
+    concepts: Array<{
+        notePath: string;
+        noteTitle: string;
+        concepts: any[];
+    }>;
+    onApply: (selectedGroups: Array<{
+        notePath: string;
+        concepts: any[];
+    }>) => Promise<void>;
+    onClear: () => void;
 }
 
-const ConceptBadge: React.FC<ConceptBadgeProps> = ({ concept, onDelete }) => {
-    const [showDelete, setShowDelete] = React.useState(false);
+const ConceptListInline: React.FC<ConceptListInlineProps> = ({
+    concepts,
+    onApply,
+    onClear,
+}) => {
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+
+    // Initialize selection when concepts change
+    useEffect(() => {
+        const allConcepts = new Set(concepts.flatMap(g => g.concepts.map((c: any) => c.name)));
+        const allFiles = new Set(concepts.map(g => g.notePath));
+        setSelected(allConcepts);
+        setSelectedFiles(allFiles);
+    }, [concepts]);
+
+    const toggleConcept = (conceptName: string) => {
+        const newSelected = new Set(selected);
+        if (newSelected.has(conceptName)) {
+            newSelected.delete(conceptName);
+        } else {
+            newSelected.add(conceptName);
+        }
+        setSelected(newSelected);
+    };
+
+    const toggleFile = (notePath: string, fileConcepts: any[]) => {
+        const newSelectedFiles = new Set(selectedFiles);
+        const newSelected = new Set(selected);
+
+        if (newSelectedFiles.has(notePath)) {
+            newSelectedFiles.delete(notePath);
+            fileConcepts.forEach((c: any) => newSelected.delete(c.name));
+        } else {
+            newSelectedFiles.add(notePath);
+            fileConcepts.forEach((c: any) => newSelected.add(c.name));
+        }
+
+        setSelectedFiles(newSelectedFiles);
+        setSelected(newSelected);
+    };
+
+    const handleApply = async () => {
+        const filteredGroups = concepts
+            .filter(group => selectedFiles.has(group.notePath))
+            .map(group => ({
+                ...group,
+                concepts: group.concepts.filter((c: any) => selected.has(c.name)),
+            }))
+            .filter(group => group.concepts.length > 0);
+
+        if (filteredGroups.length > 0) {
+            await onApply(filteredGroups);
+        }
+    };
+
+    const handleSelectAll = () => {
+        const allConcepts = new Set(concepts.flatMap(g => g.concepts.map((c: any) => c.name)));
+        const allFiles = new Set(concepts.map(g => g.notePath));
+        setSelected(allConcepts);
+        setSelectedFiles(allFiles);
+    };
+
+    const handleClear = () => {
+        setSelected(new Set());
+        setSelectedFiles(new Set());
+    };
+
+    if (concepts.length === 0) return null;
+
+    const totalConcepts = concepts.reduce((sum, g) => sum + g.concepts.length, 0);
 
     return (
-        <span
-            className="memo-echo-concept-badge"
-            onMouseEnter={() => setShowDelete(true)}
-            onMouseLeave={() => setShowDelete(false)}
-        >
-            <code>{concept}</code>
-            {showDelete && (
-                <button
-                    className="memo-echo-concept-delete-btn"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete();
-                    }}
-                    title={`删除 ${concept}`}
-                >
-                    ×
-                </button>
-            )}
-        </span>
+        <div className="memo-echo-concept-list-inline">
+            <div className="memo-echo-concept-list-header">
+                <span>💡 提取的概念 ({totalConcepts}个 • {concepts.length}个文件)</span>
+                <div className="memo-echo-concept-actions">
+                    <button
+                        onClick={handleApply}
+                        className="memo-echo-concept-btn memo-echo-concept-btn-primary"
+                        disabled={selected.size === 0}
+                    >
+                        ✓ 应用 ({selected.size})
+                    </button>
+                    <button
+                        onClick={handleSelectAll}
+                        className="memo-echo-concept-btn"
+                    >
+                        ✓ 全选
+                    </button>
+                    <button
+                        onClick={handleClear}
+                        className="memo-echo-concept-btn"
+                    >
+                        ✗ 清空
+                    </button>
+                </div>
+            </div>
+            {concepts.map(group => (
+                <div key={group.notePath} className="memo-echo-file-group">
+                    <div className="memo-echo-file-group-header">
+                        <label className="memo-echo-file-checkbox">
+                            <input
+                                type="checkbox"
+                                checked={selectedFiles.has(group.notePath)}
+                                onChange={() => toggleFile(group.notePath, group.concepts)}
+                            />
+                            <span className="memo-echo-file-title">
+                                📄 {group.noteTitle} ({group.concepts.length}个概念)
+                            </span>
+                        </label>
+                    </div>
+                    <div className="memo-echo-file-concepts">
+                        {group.concepts.map((concept: any) => (
+                            <div key={concept.name} className="memo-echo-concept-item">
+                                <label className="memo-echo-concept-checkbox">
+                                    <input
+                                        type="checkbox"
+                                        checked={selected.has(concept.name)}
+                                        onChange={() => toggleConcept(concept.name)}
+                                    />
+                                    <span className="memo-echo-concept-name">
+                                        [[{concept.name}]]
+                                    </span>
+                                    <span className="memo-echo-concept-meta">
+                                        {Math.round(concept.confidence * 100)}%
+                                    </span>
+                                </label>
+                                {concept.reason && (
+                                    <div className="memo-echo-concept-reason">
+                                        {concept.reason}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 };
 
-interface AssociationCardProps {
-    association: NoteAssociation;
-    isProcessing: boolean;
-    onAccept: () => void;
-    onIgnore: () => void;
-    onDeleteConcept: (concept: string) => void;
-    onOpenFile: (noteId: string) => void;
+/**
+ * BatchProgressBar - Progress bar for batch concept extraction
+ */
+interface BatchProgressBarProps {
+    progress: {
+        totalFiles: number;
+        processedFiles: number;
+        totalConcepts: number;
+        isProcessing: boolean;
+    };
 }
 
-const AssociationCard: React.FC<AssociationCardProps> = ({
-    association,
-    isProcessing,
-    onAccept,
-    onIgnore,
-    onDeleteConcept,
-    onOpenFile,
-}) => {
-    const sourceTitle =
-        association.sourceNoteTitle ||
-        association.sourceNoteId.split("/").pop()?.replace(".md", "") ||
-        association.sourceNoteId;
-    const targetTitle =
-        association.targetNoteTitle ||
-        association.targetNoteId.split("/").pop()?.replace(".md", "") ||
-        association.targetNoteId;
-
-    const confidenceDecimal = association.confidence.toFixed(2);
+const BatchProgressBar: React.FC<BatchProgressBarProps> = ({ progress }) => {
+    const percentage = progress.totalFiles > 0
+        ? Math.round((progress.processedFiles / progress.totalFiles) * 100)
+        : 0;
 
     return (
-        <div
-            className={`memo-echo-association-card ${isProcessing ? "processing" : ""}`}
-        >
-            <div className="memo-echo-card-header">
-                <div className="memo-echo-note-pair">
-                    <span
-                        className="memo-echo-confidence-badge"
-                        title="关联置信度"
-                    >
-                        {confidenceDecimal}
-                    </span>
-                    <span
-                        className="memo-echo-note-link"
-                        onClick={() => onOpenFile(association.sourceNoteId)}
-                        title={association.sourceNoteId}
-                    >
-                        {sourceTitle}
-                    </span>
-                    <span className="memo-echo-arrow">↔</span>
-                    <span
-                        className="memo-echo-note-link"
-                        onClick={() => onOpenFile(association.targetNoteId)}
-                        title={association.targetNoteId}
-                    >
-                        {targetTitle}
-                    </span>
-                </div>
+        <div className="memo-echo-progress-container">
+            <div className="memo-echo-progress-bar">
+                <div
+                    className="memo-echo-progress-fill"
+                    style={{ width: `${percentage}%` }}
+                />
             </div>
-
-            <div className="memo-echo-shared-concepts">
-                <div className="memo-echo-concepts-content">
-                    {association.sharedConcepts.length > 0 && (
-                        <>
-                            {association.sharedConcepts.map((concept) => (
-                                <ConceptBadge
-                                    key={concept}
-                                    concept={concept}
-                                    onDelete={() => onDeleteConcept(concept)}
-                                />
-                            ))}
-                        </>
-                    )}
-                </div>
-                <div className="memo-echo-card-actions-right">
-                    <button
-                        className="memo-echo-action-btn memo-echo-action-accept"
-                        onClick={onAccept}
-                        disabled={isProcessing}
-                        title="接受此关联"
-                    >
-                        ✓
-                    </button>
-                    <button
-                        className="memo-echo-action-btn memo-echo-action-ignore"
-                        onClick={onIgnore}
-                        disabled={isProcessing}
-                        title="忽略此关联"
-                    >
-                        ✕
-                    </button>
-                </div>
+            <div className="memo-echo-progress-text">
+                <span>
+                    <span className="memo-echo-progress-spinner">⏳</span>
+                    {' '}
+                    正在批量提取概念...
+                </span>
+                <span>
+                    {progress.processedFiles}/{progress.totalFiles} 文件 • {progress.totalConcepts} 个概念
+                </span>
             </div>
         </div>
     );

@@ -15,7 +15,7 @@ import { ConceptExtractor } from './services/concept-extractor';
 import { ConceptExtractionPipeline } from './services/concept-extraction-pipeline';
 import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
-import type { ConceptExtractionSettings, ConfirmedConcept } from './core/types/concept';
+import type { ConceptExtractionSettings, ConfirmedConcept, ExtractedConceptWithMatch } from './core/types/concept';
 import { createLogger, type Logger } from './utils/logger';
 
 export default class MemoEchoPlugin extends Plugin {
@@ -24,6 +24,10 @@ export default class MemoEchoPlugin extends Plugin {
 
     // Settings
     settings: MemoEchoSettings;
+
+    // Batch processing state
+    private isBatchProcessing = false;
+    private shouldStopBatch = false;
 
     // Services
     embeddingService: EmbeddingService;
@@ -211,6 +215,7 @@ export default class MemoEchoPlugin extends Plugin {
 
         // Setup concept event listeners
         this.setupConceptEventListeners();
+        this.setupBatchStopRequestListener();
 
         // Add settings tab
         this.addSettingTab(new MemoEchoSettingTab(this.app, this));
@@ -369,7 +374,7 @@ export default class MemoEchoPlugin extends Plugin {
     };
 
     /**
-     * Handle association for all files
+     * Handle association for all files (batch extraction with accumulate mode)
      */
     private handleAllFilesAssociation = async (): Promise<void> => {
         const files = this.app.vault.getMarkdownFiles();
@@ -379,14 +384,60 @@ export default class MemoEchoPlugin extends Plugin {
             return;
         }
 
+        if (this.isBatchProcessing) {
+            // Processing in progress, this is a stop request
+            this.shouldStopBatch = true;
+            new Notice('🛑 正在终止批量提取...');
+            return;
+        }
+
+        this.isBatchProcessing = true;
+        this.shouldStopBatch = false;
+
         console.log('[MemoEcho] Association all files requested');
         new Notice(`🔄 开始批量提取概念，共 ${files.length} 个文件`);
+
+        // Initialize batch extraction state
+        const batchResults: Array<{
+            note: { path: string; title: string; content: string };
+            concepts: ExtractedConceptWithMatch[];
+        }> = [];
 
         let processedCount = 0;
         let conceptCount = 0;
 
+        // 🔥 Trigger display every 3 files
+        const BATCH_DISPLAY_SIZE = 3;
+
+        // Send start event
+        window.dispatchEvent(new CustomEvent('memo-echo:batch-progress', {
+            detail: {
+                totalFiles: files.length,
+                processedFiles: 0,
+                totalConcepts: 0,
+                isProcessing: true,
+            },
+        }));
+
         try {
-            for (const file of files) {
+            for (let i = 0; i < files.length; i++) {
+                // Check if should stop
+                if (this.shouldStopBatch) {
+                    console.log('[MemoEcho] Batch extraction stopped by user');
+                    new Notice(`🛑 批量提取已终止，已处理 ${processedCount}/${files.length} 个文件，提取 ${conceptCount} 个概念`);
+
+                    // Send stop event
+                    window.dispatchEvent(new CustomEvent('memo-echo:batch-stop', {
+                        detail: {
+                            processedFiles: processedCount,
+                            totalConcepts: conceptCount,
+                        },
+                    }));
+
+                    break;
+                }
+
+                const file = files[i];
                 try {
                     const content = await this.app.vault.read(file);
                     const tags = this.app.metadataCache.getFileCache(file)?.tags?.map((t) => t.tag) || [];
@@ -401,31 +452,80 @@ export default class MemoEchoPlugin extends Plugin {
                     if (!result.skipped && result.concepts && result.concepts.length > 0) {
                         conceptCount += result.concepts.length;
 
-                        window.dispatchEvent(new CustomEvent('memo-echo:concepts-extracted', {
-                            detail: {
-                                note: {
-                                    path: file.path,
-                                    title: file.basename,
-                                    content,
-                                },
-                                concepts: result.concepts,
+                        // Accumulate results instead of dispatching events immediately
+                        batchResults.push({
+                            note: {
+                                path: file.path,
+                                title: file.basename,
+                                content,
                             },
-                        }));
-
-                        (this as any).pendingConceptFile = file;
+                            concepts: result.concepts,
+                        });
                     }
 
                     processedCount++;
+
+                    // Dispatch progress update
+                    window.dispatchEvent(new CustomEvent('memo-echo:batch-progress', {
+                        detail: {
+                            totalFiles: files.length,
+                            processedFiles: processedCount,
+                            totalConcepts: conceptCount,
+                            isProcessing: true,
+                        },
+                    }));
+
+                    // 🔥 Trigger concept display every 3 files or at the end
+                    if ((i + 1) % BATCH_DISPLAY_SIZE === 0 || i === files.length - 1) {
+                        console.log('[MemoEcho] Dispatching batch-increment event:', {
+                            batchCount: batchResults.length,
+                            totalFiles: files.length,
+                            processedFiles: processedCount,
+                            totalConcepts: conceptCount,
+                        });
+
+                        window.dispatchEvent(new CustomEvent('memo-echo:batch-increment', {
+                            detail: {
+                                batch: [...batchResults], // Copy current accumulated results
+                                totalFiles: files.length,
+                                processedFiles: processedCount,
+                                totalConcepts: conceptCount,
+                            },
+                        }));
+                    }
                 } catch (error) {
                     console.warn(`Failed to process file ${file.path}:`, error);
                     // Skip files with errors
                 }
             }
 
+            // Send final progress event to mark completion
+            window.dispatchEvent(new CustomEvent('memo-echo:batch-progress', {
+                detail: {
+                    totalFiles: files.length,
+                    processedFiles: files.length,
+                    totalConcepts: conceptCount,
+                    isProcessing: false,
+                },
+            }));
+
             new Notice(`✅ 批量提取完成: 已处理 ${processedCount} 个文件，提取 ${conceptCount} 个概念`);
         } catch (error) {
             console.error('[MemoEcho] Failed to batch extract concepts:', error);
             new Notice(`❌ 批量提取失败: ${error.message}`);
+        } finally {
+            this.isBatchProcessing = false;
+            this.shouldStopBatch = false;
+
+            // Send final progress event
+            window.dispatchEvent(new CustomEvent('memo-echo:batch-progress', {
+                detail: {
+                    totalFiles: files.length,
+                    processedFiles: processedCount,
+                    totalConcepts: conceptCount,
+                    isProcessing: false,
+                },
+            }));
         }
     };
 
@@ -453,10 +553,71 @@ export default class MemoEchoPlugin extends Plugin {
             }
         });
 
+        // Listen for batch concepts apply events
+        window.addEventListener('memo-echo:batch-concepts-apply', async (event: CustomEvent<{
+            groups: Array<{
+                notePath: string;
+                noteTitle: string;
+                concepts: ExtractedConceptWithMatch[];
+            }>;
+        }>) => {
+            const { groups } = event.detail;
+
+            console.log('[MemoEcho] Batch concepts apply requested for', groups.length, 'files');
+
+            try {
+                let appliedCount = 0;
+                let conceptCount = 0;
+
+                for (const group of groups) {
+                    const file = this.app.vault.getAbstractFileByPath(group.notePath) as TFile;
+
+                    if (!file) {
+                        console.warn(`[MemoEcho] File not found: ${group.notePath}`);
+                        continue;
+                    }
+
+                    const confirmedConcepts: ConfirmedConcept[] = group.concepts.map(c => ({
+                        name: c.matchInfo.matchedConcept,
+                        isNew: c.matchInfo.matchType === 'new',
+                        createPage: false,
+                        aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
+                    }));
+
+                    await this.conceptExtractionPipeline.apply(file, confirmedConcepts);
+                    appliedCount++;
+                    conceptCount += confirmedConcepts.length;
+                }
+
+                new Notice(`✅ 已应用 ${conceptCount} 个概念到 ${appliedCount} 个文件`);
+
+                // Refresh associations after batch apply
+                if (this.associationView) {
+                    console.log('[MemoEcho] Refreshing associations after batch apply...');
+                    await this.associationView.refreshAssociations({ scan: true });
+                    console.log('[MemoEcho] Associations refreshed successfully');
+                }
+
+                console.log('[MemoEcho] Batch concepts applied:', appliedCount, 'files,', conceptCount, 'concepts');
+            } catch (error) {
+                console.error('[MemoEcho] Failed to apply batch concepts:', error);
+                new Notice(`❌ 批量应用失败: ${error.message}`);
+            }
+        });
+
         // Listen for concept skip events
         window.addEventListener('memo-echo:concepts-skip', () => {
             console.log('[MemoEcho] Concept extraction skipped by user');
             delete (this as any).pendingConceptFile;
+        });
+    }
+
+    private setupBatchStopRequestListener(): void {
+        window.addEventListener('memo-echo:batch-stop-request', () => {
+            if (this.isBatchProcessing) {
+                this.shouldStopBatch = true;
+                console.log('[MemoEcho] Stop batch requested, setting flag');
+            }
         });
     }
 

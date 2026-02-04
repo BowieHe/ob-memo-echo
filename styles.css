@@ -1166,29 +1166,16 @@
 
 .memo-echo-concept-panel-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     padding: 8px 12px;
     background-color: var(--background-modifier-border);
-    cursor: pointer;
-    user-select: none;
-    transition: background-color 0.2s;
-}
-
-.memo-echo-concept-panel-header:hover {
-    background-color: var(--background-modifier-hover);
 }
 
 .memo-echo-concept-panel-title {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-normal);
-}
-
-.memo-echo-concept-panel-toggle {
-    font-size: 12px;
-    color: var(--text-muted);
-    transition: transform 0.2s;
 }
 
 .memo-echo-concept-panel-content {
@@ -1301,4 +1288,91 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+}
+
+/* ============================================================
+   Batch Progress Bar Styles
+   ============================================================ */
+
+.memo-echo-progress-container {
+    padding: 12px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.memo-echo-progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.memo-echo-progress-fill {
+    height: 100%;
+    background-color: var(--interactive-accent);
+    transition: width 0.3s ease;
+}
+
+.memo-echo-progress-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.memo-echo-progress-spinner {
+    font-size: 14px;
+    animation: spin 1s linear infinite;
+}
+
+/* ============================================================
+   File Group Styles for Batch Mode
+   ============================================================ */
+
+.memo-echo-file-group {
+    margin-bottom: 12px;
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+}
+
+.memo-echo-file-group-header {
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.memo-echo-file-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.memo-echo-file-checkbox input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+
+.memo-echo-file-title {
+    flex: 1;
+    color: var(--text-normal);
+}
+
+.memo-echo-file-concepts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-left: 24px;
+}
+
+.memo-echo-file-concepts .memo-echo-concept-item {
+    padding: 4px 6px;
 }

@@ -8,7 +8,6 @@ import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { AssociationPanel } from './components/AssociationPanel';
-import { ConceptConfirmationPanel } from './components/ConceptConfirmationPanel';
 import type { ConfirmedConcept } from '@core/types/concept';
 import type { ExtractedConceptWithMatch } from '@core/types/concept';
 import { SimpleAssociationEngine, NoteAssociation } from './services/association-engine';
@@ -32,9 +31,22 @@ export class AssociationView extends ItemView {
     private associations: NoteAssociation[] = [];
     private isLoading = false;
 
-    // v0.9.0: Concept confirmation state
-    private extractedConcepts: ExtractedConceptWithMatch[] = [];
-    private currentNote: { path: string; title: string } | null = null;
+    // Batch extraction state
+    private extractedConcepts: Array<{
+        notePath: string;
+        noteTitle: string;
+        concepts: ExtractedConceptWithMatch[];
+    }> = [];
+    private batchProgress: {
+        totalFiles: number;
+        processedFiles: number;
+        totalConcepts: number;
+        isProcessing: boolean;
+    } | undefined;
+    private batchProgressEventListener: ((event: CustomEvent<any>) => void) | null = null;
+    private batchIncrementEventListener: ((event: CustomEvent<any>) => void) | null = null;
+    private batchStopEventListener: ((event: CustomEvent<any>) => void) | null = null;
+    private isBatchProcessing = false;
     private conceptEventListener: ((event: CustomEvent<any>) => void) | null = null;
 
     constructor(
@@ -82,9 +94,20 @@ export class AssociationView extends ItemView {
     }
 
     async onClose(): Promise<void> {
-        // v0.9.0: Clean up concept event listener
         if (this.conceptEventListener) {
             window.removeEventListener('memo-echo:concepts-extracted', this.conceptEventListener);
+        }
+
+        if (this.batchProgressEventListener) {
+            window.removeEventListener('memo-echo:batch-progress', this.batchProgressEventListener);
+        }
+
+        if (this.batchIncrementEventListener) {
+            window.removeEventListener('memo-echo:batch-increment', this.batchIncrementEventListener);
+        }
+
+        if (this.batchStopEventListener) {
+            window.removeEventListener('memo-echo:batch-stop', this.batchStopEventListener);
         }
 
         if (this.root) {
@@ -100,51 +123,28 @@ export class AssociationView extends ItemView {
 
         this.root = createRoot(this.container);
 
-        // Build the children array
-        const children: React.ReactElement[] = [];
-
-        // v0.9.0: Add concept confirmation panel if concepts are available
-        if (this.currentNote && this.extractedConcepts.length > 0) {
-            children.push(
-                React.createElement(ConceptConfirmationPanel, {
-                    key: 'concept-confirmation',
-                    notePath: this.currentNote.path,
-                    noteTitle: this.currentNote.title,
-                    extractedConcepts: this.extractedConcepts,
-                    onApply: this.handleConceptsApply,
-                    onSkip: this.handleConceptsSkip,
-                    onClear: this.handleConceptsClear,
-                })
-            );
-        }
-
-        // Add association panel
-        children.push(
+        this.root.render(
             React.createElement(AssociationPanel, {
-                key: 'association',
                 associations: this.associations,
                 isLoading: this.isLoading,
                 onAccept: this.handleAccept,
                 onIgnore: this.handleIgnore,
-                onDeleteConcept: this.handleDeleteConcept,
-                onAcceptAll: this.handleAcceptAll,
-                onClearRecent: this.handleClearRecent,
                 onOpenFile: this.handleOpenFile,
                 onAssociateCurrent: this.handleAssociateCurrent,
                 onAssociateAll: this.handleAssociateAll,
+                extractedConcepts: this.extractedConcepts,
+                onApplyConcepts: this.handleConceptsBatchApply,
+                onClearConcepts: this.handleConceptsClear,
+                isBatchProcessing: this.isBatchProcessing,
+                onStopBatch: this.handleStopBatch,
             })
-        );
-
-        // Render with a container div
-        this.root.render(
-            React.createElement('div', { className: 'association-view-content' }, children)
         );
     }
 
     /**
      * Refresh associations from the engine
      */
-    private refreshAssociations = async (options: { scan: boolean }): Promise<void> => {
+    public refreshAssociations = async (options: { scan: boolean }): Promise<void> => {
         this.isLoading = true;
         this.renderReact();
 
@@ -450,41 +450,92 @@ export class AssociationView extends ItemView {
             concepts: ExtractedConceptWithMatch[];
         }>) => {
             const { note, concepts } = event.detail;
-            this.currentNote = { path: note.path, title: note.title };
-            this.extractedConcepts = concepts;
+            this.extractedConcepts = [{
+                notePath: note.path,
+                noteTitle: note.title,
+                concepts: concepts,
+            }];
             this.renderReact();
         }) as EventListener;
 
         window.addEventListener('memo-echo:concepts-extracted', this.conceptEventListener);
+
+        // Setup batch increment event listener for real-time updates
+        this.batchIncrementEventListener = ((event: CustomEvent<{
+            batch: Array<{
+                note: { path: string; title: string; content: string };
+                concepts: ExtractedConceptWithMatch[];
+            }>;
+            totalFiles: number;
+            processedFiles: number;
+            totalConcepts: number;
+        }>) => {
+            const { batch, totalFiles, processedFiles, totalConcepts } = event.detail;
+
+            console.log('[AssociationView] Batch increment received:', {
+                resultsCount: batch.length,
+                totalFiles,
+                processedFiles,
+                totalConcepts,
+            });
+
+            // Transform results to match extractedConcepts format
+            this.extractedConcepts = batch.map(r => ({
+                notePath: r.note.path,
+                noteTitle: r.note.title,
+                concepts: r.concepts,
+            }));
+
+            // Update progress state
+            this.batchProgress = {
+                totalFiles,
+                processedFiles,
+                totalConcepts,
+                isProcessing: processedFiles < totalFiles,
+            };
+
+            this.isBatchProcessing = this.batchProgress.isProcessing;
+
+            this.renderReact();
+        }) as EventListener;
+
+        window.addEventListener('memo-echo:batch-increment', this.batchIncrementEventListener);
+
+        // Setup batch stop event listener
+        this.batchStopEventListener = ((event: CustomEvent<{
+            processedFiles: number;
+            totalConcepts: number;
+        }>) => {
+            const { processedFiles, totalConcepts } = event.detail;
+
+            this.isBatchProcessing = false;
+            this.renderReact();
+
+            console.log('[AssociationView] Batch extraction stopped:', {
+                processedFiles,
+                totalConcepts,
+            });
+        }) as EventListener;
+
+        window.addEventListener('memo-echo:batch-stop', this.batchStopEventListener);
     }
 
     /**
-     * v0.9.0: Handle concept apply
+     * Handle batch concepts apply
      */
-    private handleConceptsApply = async (concepts: ConfirmedConcept[]): Promise<void> => {
-        console.log('[AssociationView] Concepts to apply:', concepts);
+    private handleConceptsBatchApply = async (groups: Array<{
+        notePath: string;
+        noteTitle: string;
+        concepts: ExtractedConceptWithMatch[];
+    }>): Promise<void> => {
+        console.log('[AssociationView] Batch concepts to apply:', groups);
 
-        // This will be handled by main.ts through the memo-echo:concepts-apply event
-        // Just clear the local state here
+        window.dispatchEvent(new CustomEvent('memo-echo:batch-concepts-apply', {
+            detail: { groups },
+        }));
+
         this.extractedConcepts = [];
-        this.currentNote = null;
         this.renderReact();
-
-        // Dispatch event for main.ts to handle
-        window.dispatchEvent(new CustomEvent('memo-echo:concepts-apply', { detail: concepts }));
-    };
-
-    /**
-     * v0.9.0: Handle concept skip
-     */
-    private handleConceptsSkip = (): void => {
-        console.log('[AssociationView] Concepts skipped');
-        this.extractedConcepts = [];
-        this.currentNote = null;
-        this.renderReact();
-
-        // Dispatch event for main.ts
-        window.dispatchEvent(new CustomEvent('memo-echo:concepts-skip'));
     };
 
     /**
@@ -493,8 +544,15 @@ export class AssociationView extends ItemView {
     private handleConceptsClear = (): void => {
         console.log('[AssociationView] Concepts cleared');
         this.extractedConcepts = [];
-        this.currentNote = null;
         this.renderReact();
+    };
+
+    /**
+     * Handle stop batch
+     */
+    private handleStopBatch = (): void => {
+        console.log('[AssociationView] Stop batch requested');
+        window.dispatchEvent(new CustomEvent('memo-echo:batch-stop-request'));
     };
 
     /**
