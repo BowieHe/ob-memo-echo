@@ -53,20 +53,32 @@ export class FrontmatterService {
     }
 
     /**
-     * Update me_concepts field in frontmatter
-     * @param concepts - Array of concept names (without wikilink syntax)
+     * Update me_concepts field in frontmatter (incremental merge)
+     * @param concepts - Array of concept names (without wikilink syntax) to ADD
      */
     async setConcepts(file: TFile, concepts: string[]): Promise<void> {
         if (concepts.length === 0) {
-            await this.clearMemoEchoFields(file);
-            return;
+            return; // Don't clear, just return
         }
 
-        // Convert to wikilink format
-        const wikilinks = concepts.map(c => `[[${this.conceptPagePrefix}/${c}]]`);
-
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            frontmatter.me_concepts = wikilinks;
+            // Get existing concepts and extract concept names
+            const existingConcepts = frontmatter.me_concepts || [];
+            const existingNames = new Set(
+                existingConcepts.map((c: string) => {
+                    // Extract concept name from [[prefix/name]] format
+                    const match = c.match(/\[\[.+\/(.+)\]\]$/);
+                    return match ? match[1] : c;
+                })
+            );
+
+            // Add new concepts to the set
+            concepts.forEach(c => existingNames.add(c));
+
+            // Convert back to wikilink format
+            frontmatter.me_concepts = Array.from(existingNames).map(
+                c => `[[${this.conceptPagePrefix}/${c}]]`
+            );
         });
     }
 
@@ -82,19 +94,31 @@ export class FrontmatterService {
     }
 
     /**
-     * Update both concepts and indexed_at atomically
+     * Update both concepts and indexed_at atomically (incremental merge for concepts)
      */
     async updateAfterIndexing(file: TFile, concepts: string[]): Promise<void> {
-        if (concepts.length === 0) {
-            await this.clearMemoEchoFields(file);
-            return;
-        }
-
-        const wikilinks = concepts.map(c => `[[${this.conceptPagePrefix}/${c}]]`);
         const isoString = new Date().toISOString();
 
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            frontmatter.me_concepts = wikilinks;
+            // Get existing concepts and extract concept names
+            const existingConcepts = frontmatter.me_concepts || [];
+            const existingNames = new Set(
+                existingConcepts.map((c: string) => {
+                    // Extract concept name from [[prefix/name]] format
+                    const match = c.match(/\[\[.+\/(.+)\]\]$/);
+                    return match ? match[1] : c;
+                })
+            );
+
+            // Add new concepts to the set
+            concepts.forEach(c => existingNames.add(c));
+
+            // Convert back to wikilink format
+            frontmatter.me_concepts = Array.from(existingNames).map(
+                c => `[[${this.conceptPagePrefix}/${c}]]`
+            );
+
+            // Update indexed_at timestamp
             frontmatter.me_indexed_at = isoString;
         });
     }

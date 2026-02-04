@@ -135,6 +135,8 @@ export class AssociationView extends ItemView {
                 extractedConcepts: this.extractedConcepts,
                 onApplyConcepts: this.handleConceptsBatchApply,
                 onClearConcepts: this.handleConceptsClear,
+                onRejectConcept: this.handleRejectConcept,
+                onApplySingleConcept: this.handleSingleConceptApply,
                 isBatchProcessing: this.isBatchProcessing,
                 onStopBatch: this.handleStopBatch,
             })
@@ -539,11 +541,63 @@ export class AssociationView extends ItemView {
     };
 
     /**
+     * Handle single concept apply (no full refresh)
+     */
+    private handleSingleConceptApply = async (group: {
+        notePath: string;
+        noteTitle: string;
+        concepts: ExtractedConceptWithMatch[];
+    }): Promise<void> => {
+        console.log('[AssociationView] Single concept to apply:', group);
+
+        window.dispatchEvent(new CustomEvent('memo-echo:single-concept-apply', {
+            detail: { group },
+        }));
+
+        // Remove only the applied concept from display, not full refresh
+        this.extractedConcepts = this.extractedConcepts
+            .map(g => {
+                if (g.notePath === group.notePath) {
+                    return {
+                        ...g,
+                        concepts: g.concepts.filter(c => c.name !== group.concepts[0]?.name),
+                    };
+                }
+                return g;
+            })
+            .filter(g => g.concepts.length > 0);
+
+        this.renderReact();
+    };
+
+    /**
      * v0.9.0: Handle concept clear
      */
     private handleConceptsClear = (): void => {
         console.log('[AssociationView] Concepts cleared');
         this.extractedConcepts = [];
+        this.renderReact();
+    };
+
+    /**
+     * Handle rejecting a single concept
+     */
+    private handleRejectConcept = (conceptName: string, notePath: string): void => {
+        console.log('[AssociationView] Rejecting concept:', conceptName, 'from', notePath);
+
+        // Filter out the rejected concept from extractedConcepts
+        this.extractedConcepts = this.extractedConcepts
+            .map(group => {
+                if (group.notePath === notePath) {
+                    return {
+                        ...group,
+                        concepts: group.concepts.filter(c => c.name !== conceptName),
+                    };
+                }
+                return group;
+            })
+            .filter(group => group.concepts.length > 0);
+
         this.renderReact();
     };
 

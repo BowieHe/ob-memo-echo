@@ -3,7 +3,7 @@
  * v0.6.0: Smart association discovery UI
  */
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { NoteAssociation } from "@services/association-engine";
 
 export interface AssociationPanelProps {
@@ -25,11 +25,20 @@ export interface AssociationPanelProps {
         noteTitle: string;
         concepts: any[];
     }>;
-    onApplyConcepts: (selectedGroups: Array<{
-        notePath: string;
-        concepts: any[];
-    }>) => Promise<void>;
+    onApplyConcepts: (
+        selectedGroups: Array<{
+            notePath: string;
+            concepts: any[];
+        }>,
+    ) => Promise<void>;
     onClearConcepts: () => void;
+    // Per-item concept action callbacks
+    onRejectConcept?: (conceptName: string, notePath: string) => void;
+    onApplySingleConcept?: (group: {
+        notePath: string;
+        noteTitle: string;
+        concepts: any[];
+    }) => Promise<void>;
     isBatchProcessing: boolean;
     onStopBatch: () => void;
 }
@@ -46,9 +55,50 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     extractedConcepts,
     onApplyConcepts,
     onClearConcepts,
+    onRejectConcept,
+    onApplySingleConcept,
     isBatchProcessing,
     onStopBatch,
 }) => {
+    const handleApplySingleConceptWrapper = async (
+        conceptName: string,
+        notePath: string,
+    ) => {
+        if (onApplySingleConcept) {
+            // Use the dedicated single-concept handler
+            const group = extractedConcepts?.find(
+                (g) => g.notePath === notePath,
+            );
+            const concept = group?.concepts.find(
+                (c: any) => c.name === conceptName,
+            );
+            if (group && concept) {
+                await onApplySingleConcept({
+                    notePath: group.notePath,
+                    noteTitle: group.noteTitle,
+                    concepts: [concept],
+                });
+            }
+        } else {
+            // Fallback to batch apply (triggers full refresh)
+            const group = extractedConcepts?.find(
+                (g) => g.notePath === notePath,
+            );
+            const concept = group?.concepts.find(
+                (c: any) => c.name === conceptName,
+            );
+            if (concept) {
+                await onApplyConcepts([{ notePath, concepts: [concept] }]);
+            }
+        }
+    };
+
+    const handleRejectSingleConcept = (
+        conceptName: string,
+        notePath: string,
+    ) => {
+        onRejectConcept?.(conceptName, notePath);
+    };
     return (
         <div className="memo-echo-association-panel">
             {/* Header */}
@@ -65,17 +115,25 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                     </button>
                     <button
                         className="memo-echo-icon-btn"
-                        onClick={isBatchProcessing ? onStopBatch : onAssociateAll}
+                        onClick={
+                            isBatchProcessing ? onStopBatch : onAssociateAll
+                        }
                         disabled={isLoading}
-                        title={isBatchProcessing ? "停止批量提取" : "批量提取所有页面的概念和创建关联"}
+                        title={
+                            isBatchProcessing
+                                ? "停止批量提取"
+                                : "批量提取所有页面的概念和创建关联"
+                        }
                     >
-                        {isBatchProcessing ? '🛑' : '📚'}
+                        {isBatchProcessing ? "🛑" : "📚"}
                     </button>
                 </div>
             </div>
 
             {/* 进度条 */}
-            {batchProgress?.isProcessing && <BatchProgressBar progress={batchProgress} />}
+            {batchProgress?.isProcessing && (
+                <BatchProgressBar progress={batchProgress} />
+            )}
 
             {/* 概念列表 */}
             {extractedConcepts && extractedConcepts.length > 0 && (
@@ -83,18 +141,22 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                     concepts={extractedConcepts}
                     onApply={onApplyConcepts}
                     onClear={onClearConcepts}
+                    onApplySingle={handleApplySingleConceptWrapper}
+                    onRejectSingle={handleRejectSingleConcept}
                 />
             )}
 
             {/* 空状态 */}
-            {!isLoading && !batchProgress?.isProcessing && (!extractedConcepts || extractedConcepts.length === 0) && (
-                <div className="memo-echo-empty">
-                    <p>暂无未关联的概念</p>
-                    <p className="memo-echo-hint">
-                        点击 📚 批量提取或 📄 提取当前笔记的概念
-                    </p>
-                </div>
-            )}
+            {!isLoading &&
+                !batchProgress?.isProcessing &&
+                (!extractedConcepts || extractedConcepts.length === 0) && (
+                    <div className="memo-echo-empty">
+                        <p>暂无未关联的概念</p>
+                        <p className="memo-echo-hint">
+                            点击 📚 批量提取或 📄 提取当前笔记的概念
+                        </p>
+                    </div>
+                )}
         </div>
     );
 };
@@ -108,25 +170,35 @@ interface ConceptListInlineProps {
         noteTitle: string;
         concepts: any[];
     }>;
-    onApply: (selectedGroups: Array<{
-        notePath: string;
-        concepts: any[];
-    }>) => Promise<void>;
+    onApply: (
+        selectedGroups: Array<{
+            notePath: string;
+            concepts: any[];
+        }>,
+    ) => Promise<void>;
     onClear: () => void;
+    // Per-item action callbacks
+    onApplySingle?: (conceptName: string, notePath: string) => Promise<void>;
+    onRejectSingle?: (conceptName: string, notePath: string) => void;
 }
 
 const ConceptListInline: React.FC<ConceptListInlineProps> = ({
     concepts,
     onApply,
     onClear,
+    onApplySingle,
+    onRejectSingle,
 }) => {
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Initialize selection when concepts change
     useEffect(() => {
-        const allConcepts = new Set(concepts.flatMap(g => g.concepts.map((c: any) => c.name)));
-        const allFiles = new Set(concepts.map(g => g.notePath));
+        const allConcepts = new Set(
+            concepts.flatMap((g) => g.concepts.map((c: any) => c.name)),
+        );
+        const allFiles = new Set(concepts.map((g) => g.notePath));
         setSelected(allConcepts);
         setSelectedFiles(allFiles);
     }, [concepts]);
@@ -159,12 +231,14 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
 
     const handleApply = async () => {
         const filteredGroups = concepts
-            .filter(group => selectedFiles.has(group.notePath))
-            .map(group => ({
+            .filter((group) => selectedFiles.has(group.notePath))
+            .map((group) => ({
                 ...group,
-                concepts: group.concepts.filter((c: any) => selected.has(c.name)),
+                concepts: group.concepts.filter((c: any) =>
+                    selected.has(c.name),
+                ),
             }))
-            .filter(group => group.concepts.length > 0);
+            .filter((group) => group.concepts.length > 0);
 
         if (filteredGroups.length > 0) {
             await onApply(filteredGroups);
@@ -172,8 +246,10 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
     };
 
     const handleSelectAll = () => {
-        const allConcepts = new Set(concepts.flatMap(g => g.concepts.map((c: any) => c.name)));
-        const allFiles = new Set(concepts.map(g => g.notePath));
+        const allConcepts = new Set(
+            concepts.flatMap((g) => g.concepts.map((c: any) => c.name)),
+        );
+        const allFiles = new Set(concepts.map((g) => g.notePath));
         setSelected(allConcepts);
         setSelectedFiles(allFiles);
     };
@@ -183,14 +259,35 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
         setSelectedFiles(new Set());
     };
 
+    const handleApplySingle = async (
+        conceptName: string,
+        notePath: string,
+    ) => {
+        setIsProcessing(true);
+        try {
+            await onApplySingle?.(conceptName, notePath);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleRejectSingle = (conceptName: string, notePath: string) => {
+        onRejectSingle?.(conceptName, notePath);
+    };
+
     if (concepts.length === 0) return null;
 
-    const totalConcepts = concepts.reduce((sum, g) => sum + g.concepts.length, 0);
+    const totalConcepts = concepts.reduce(
+        (sum, g) => sum + g.concepts.length,
+        0,
+    );
 
     return (
         <div className="memo-echo-concept-list-inline">
             <div className="memo-echo-concept-list-header">
-                <span>💡 提取的概念 ({totalConcepts}个 • {concepts.length}个文件)</span>
+                <span>
+                    💡 提取的概念 ({totalConcepts}个 • {concepts.length}个文件)
+                </span>
                 <div className="memo-echo-concept-actions">
                     <button
                         onClick={handleApply}
@@ -213,28 +310,36 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
                     </button>
                 </div>
             </div>
-            {concepts.map(group => (
+            {concepts.map((group) => (
                 <div key={group.notePath} className="memo-echo-file-group">
                     <div className="memo-echo-file-group-header">
                         <label className="memo-echo-file-checkbox">
                             <input
                                 type="checkbox"
                                 checked={selectedFiles.has(group.notePath)}
-                                onChange={() => toggleFile(group.notePath, group.concepts)}
+                                onChange={() =>
+                                    toggleFile(group.notePath, group.concepts)
+                                }
                             />
                             <span className="memo-echo-file-title">
-                                📄 {group.noteTitle} ({group.concepts.length}个概念)
+                                📄 {group.noteTitle} ({group.concepts.length}
+                                个概念)
                             </span>
                         </label>
                     </div>
                     <div className="memo-echo-file-concepts">
                         {group.concepts.map((concept: any) => (
-                            <div key={concept.name} className="memo-echo-concept-item">
+                            <div
+                                key={concept.name}
+                                className="memo-echo-concept-item"
+                            >
                                 <label className="memo-echo-concept-checkbox">
                                     <input
                                         type="checkbox"
                                         checked={selected.has(concept.name)}
-                                        onChange={() => toggleConcept(concept.name)}
+                                        onChange={() =>
+                                            toggleConcept(concept.name)
+                                        }
                                     />
                                     <span className="memo-echo-concept-name">
                                         [[{concept.name}]]
@@ -242,6 +347,37 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
                                     <span className="memo-echo-concept-meta">
                                         {Math.round(concept.confidence * 100)}%
                                     </span>
+                                    <div className="memo-echo-concept-item-actions">
+                                        <button
+                                            className="memo-echo-concept-action-btn memo-echo-concept-approve-btn"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleApplySingle(
+                                                    concept.name,
+                                                    group.notePath,
+                                                );
+                                            }}
+                                            title="应用此概念"
+                                            disabled={isProcessing}
+                                        >
+                                            ✓
+                                        </button>
+                                        <button
+                                            className="memo-echo-concept-action-btn memo-echo-concept-reject-btn"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleRejectSingle(
+                                                    concept.name,
+                                                    group.notePath,
+                                                );
+                                            }}
+                                            title="拒绝此概念"
+                                        >
+                                            ✗
+                                        </button>
+                                    </div>
                                 </label>
                                 {concept.reason && (
                                     <div className="memo-echo-concept-reason">
@@ -270,9 +406,10 @@ interface BatchProgressBarProps {
 }
 
 const BatchProgressBar: React.FC<BatchProgressBarProps> = ({ progress }) => {
-    const percentage = progress.totalFiles > 0
-        ? Math.round((progress.processedFiles / progress.totalFiles) * 100)
-        : 0;
+    const percentage =
+        progress.totalFiles > 0
+            ? Math.round((progress.processedFiles / progress.totalFiles) * 100)
+            : 0;
 
     return (
         <div className="memo-echo-progress-container">
@@ -284,12 +421,12 @@ const BatchProgressBar: React.FC<BatchProgressBarProps> = ({ progress }) => {
             </div>
             <div className="memo-echo-progress-text">
                 <span>
-                    <span className="memo-echo-progress-spinner">⏳</span>
-                    {' '}
+                    <span className="memo-echo-progress-spinner">⏳</span>{" "}
                     正在批量提取概念...
                 </span>
                 <span>
-                    {progress.processedFiles}/{progress.totalFiles} 文件 • {progress.totalConcepts} 个概念
+                    {progress.processedFiles}/{progress.totalFiles} 文件 •{" "}
+                    {progress.totalConcepts} 个概念
                 </span>
             </div>
         </div>

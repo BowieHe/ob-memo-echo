@@ -1242,6 +1242,65 @@
     font-style: italic;
 }
 
+/* Per-item action buttons container */
+.memo-echo-concept-item-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    align-items: center;
+}
+
+/* Shared base style for circular action buttons */
+.memo-echo-concept-action-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 0;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.memo-echo-concept-action-btn:hover:not(:disabled) {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.memo-echo-concept-action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Approve button (green checkmark) */
+.memo-echo-concept-approve-btn {
+    color: var(--color-green, #4caf50);
+    border-color: var(--color-green, #4caf50);
+}
+
+.memo-echo-concept-approve-btn:hover:not(:disabled) {
+    background-color: var(--color-green, #4caf50);
+    color: white;
+}
+
+/* Reject button (red X) */
+.memo-echo-concept-reject-btn {
+    color: var(--color-red, #f44336);
+    border-color: var(--color-red, #f44336);
+}
+
+.memo-echo-concept-reject-btn:hover:not(:disabled) {
+    background-color: var(--color-red, #f44336);
+    color: white;
+}
+
 .memo-echo-concept-actions {
     display: flex;
     gap: 6px;

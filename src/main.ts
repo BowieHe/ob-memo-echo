@@ -605,6 +605,45 @@ export default class MemoEchoPlugin extends Plugin {
             }
         });
 
+        // Listen for single concept apply events (no full refresh)
+        window.addEventListener('memo-echo:single-concept-apply', async (event: CustomEvent<{
+            group: {
+                notePath: string;
+                noteTitle: string;
+                concepts: ExtractedConceptWithMatch[];
+            };
+        }>) => {
+            const { group } = event.detail;
+
+            console.log('[MemoEcho] Single concept apply requested for', group.notePath);
+
+            try {
+                const file = this.app.vault.getAbstractFileByPath(group.notePath) as TFile;
+
+                if (!file) {
+                    console.warn(`[MemoEcho] File not found: ${group.notePath}`);
+                    return;
+                }
+
+                const confirmedConcepts: ConfirmedConcept[] = group.concepts.map(c => ({
+                    name: c.matchInfo.matchedConcept,
+                    isNew: c.matchInfo.matchType === 'new',
+                    createPage: false,
+                    aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
+                }));
+
+                await this.conceptExtractionPipeline.apply(file, confirmedConcepts);
+
+                new Notice(`✅ 已应用 ${confirmedConcepts.length} 个概念`);
+
+                // NO full refresh for single concept - the view handles removing the item
+                console.log('[MemoEcho] Single concept applied successfully');
+            } catch (error) {
+                console.error('[MemoEcho] Failed to apply single concept:', error);
+                new Notice(`❌ 应用失败: ${error.message}`);
+            }
+        });
+
         // Listen for concept skip events
         window.addEventListener('memo-echo:concepts-skip', () => {
             console.log('[MemoEcho] Concept extraction skipped by user');
