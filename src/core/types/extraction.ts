@@ -20,6 +20,14 @@ export interface ExtractedMetadata {
     thinking_point: string;   // Aphorism/Insight (e.g., 'Reliability requires state tracking')
 }
 
+export const EMPTY_EXTRACTED_METADATA: ExtractedMetadata = {
+    summary: '',
+    tags: [],
+    category: '',
+    concepts: [],
+    thinking_point: '',
+};
+
 /**
  * Configuration for MetadataExtractor
  */

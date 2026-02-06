@@ -4,13 +4,12 @@
  */
 
 import type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult } from '@core/types/embedding';
+import { getErrorMessage } from '@utils/error';
 
 export type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult };
 
 export class EmbeddingService {
-    private config: EmbeddingConfig;
-    private localEmbedder: any = null;
-    private isInitialized = false;
+    private config: EmbeddingConfig;;
 
     constructor(config: EmbeddingConfig) {
         this.config = config;
@@ -21,11 +20,6 @@ export class EmbeddingService {
      */
     updateConfig(config: Partial<EmbeddingConfig>) {
         this.config = { ...this.config, ...config };
-        // Reset initialization if provider changed
-        if (config.provider) {
-            this.isInitialized = false;
-            this.localEmbedder = null;
-        }
     }
 
     /**
@@ -33,8 +27,6 @@ export class EmbeddingService {
      */
     async embed(text: string): Promise<number[]> {
         switch (this.config.provider) {
-            case 'local':
-                return this.embedLocal(text);
             case 'ollama':
                 return this.embedOllama(text);
             case 'openai':
@@ -75,38 +67,6 @@ export class EmbeddingService {
     }
 
     /**
-     * Local embedding using Transformers.js
-     */
-    private async embedLocal(text: string): Promise<number[]> {
-        if (!this.localEmbedder) {
-            await this.initializeLocalEmbedder();
-        }
-
-        const output = await this.localEmbedder(text, {
-            pooling: 'mean',
-            normalize: true,
-        });
-
-        return Array.from(output.data);
-    }
-
-    /**
-     * Initialize Transformers.js model (lazy loading)
-     */
-    private async initializeLocalEmbedder() {
-        if (this.isInitialized) return;
-
-        const { pipeline } = await import('@xenova/transformers');
-
-        this.localEmbedder = await pipeline(
-            'feature-extraction',
-            'Xenova/bge-m3'
-        );
-
-        this.isInitialized = true;
-    }
-
-    /**
      * Ollama embedding
      */
     private async embedOllama(text: string): Promise<number[]> {
@@ -138,7 +98,7 @@ export class EmbeddingService {
 
             throw new Error('Ollama response missing embedding');
         } catch (error) {
-            throw new Error(`Failed to generate Ollama embedding: ${error.message}`);
+            throw new Error(`Failed to generate Ollama embedding: ${getErrorMessage(error)}`);
         }
     }
 
@@ -160,7 +120,7 @@ export class EmbeddingService {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model,
+                model: model,
                 input: text,
             }),
         });

@@ -15,11 +15,12 @@ import { AssociationPreferences } from '../services/association-preferences';
 import type { MemoEchoSettings } from './settings';
 import { FrontmatterService } from '../services/frontmatter-service';
 import { extractWikilinkConcepts } from '../utils/wikilink-utils';
-import { VIEW_TYPE_ASSOCIATION } from '../core/constants';
+import { VIEW_TYPE_CONCEPT } from '../core/constants';
+import { getErrorMessage } from '@utils/error';
 
-export class AssociationView extends ItemView {
+export class ConceptView extends ItemView {
     private root: Root | null = null;
-    private container: HTMLElement;
+    private container!: HTMLElement;
     private associationEngine: SimpleAssociationEngine;
     private frontmatterService: FrontmatterService;
     private associationPreferences: AssociationPreferences;
@@ -43,11 +44,11 @@ export class AssociationView extends ItemView {
         totalConcepts: number;
         isProcessing: boolean;
     } | undefined;
-    private batchProgressEventListener: ((event: CustomEvent<any>) => void) | null = null;
-    private batchIncrementEventListener: ((event: CustomEvent<any>) => void) | null = null;
-    private batchStopEventListener: ((event: CustomEvent<any>) => void) | null = null;
+    private batchProgressEventListener: ((event: WindowEventMap['memo-echo:batch-progress']) => void) | null = null;
+    private batchIncrementEventListener: ((event: WindowEventMap['memo-echo:batch-increment']) => void) | null = null;
+    private batchStopEventListener: ((event: WindowEventMap['memo-echo:batch-stop']) => void) | null = null;
     private isBatchProcessing = false;
-    private conceptEventListener: ((event: CustomEvent<any>) => void) | null = null;
+    private conceptEventListener: ((event: WindowEventMap['memo-echo:concepts-extracted']) => void) | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -68,7 +69,7 @@ export class AssociationView extends ItemView {
     }
 
     getViewType(): string {
-        return VIEW_TYPE_ASSOCIATION;
+        return VIEW_TYPE_CONCEPT;
     }
 
     getDisplayText(): string {
@@ -82,7 +83,7 @@ export class AssociationView extends ItemView {
     async onOpen(): Promise<void> {
         this.container = this.containerEl.children[1] as HTMLElement;
         this.container.empty();
-        this.container.addClass('association-view');
+        this.container.addClass('concept-view');
 
         // Initial render
         this.renderReact();
@@ -193,7 +194,7 @@ export class AssociationView extends ItemView {
 
         } catch (error) {
             console.error('Failed to refresh associations:', error);
-            new Notice(`❌ 刷新关联失败: ${error.message}`);
+            new Notice(`❌ 刷新关联失败: ${getErrorMessage(error)}`);
         } finally {
             this.isLoading = false;
             this.renderReact();
@@ -315,7 +316,7 @@ export class AssociationView extends ItemView {
 
         } catch (error) {
             console.error('Failed to accept association:', error);
-            new Notice(`❌ 接受关联失败: ${error.message}`);
+            new Notice(`❌ 接受关联失败: ${getErrorMessage(error)}`);
         }
     };
 
@@ -387,7 +388,7 @@ export class AssociationView extends ItemView {
 
         } catch (error) {
             console.error('Failed to accept all:', error);
-            new Notice(`❌ 批量接受失败: ${error.message}`);
+            new Notice(`❌ 批量接受失败: ${getErrorMessage(error)}`);
         }
     };
 
@@ -427,7 +428,7 @@ export class AssociationView extends ItemView {
 
         } catch (error) {
             console.error('Failed to clear recent:', error);
-            new Notice(`❌ 清除失败: ${error.message}`);
+            new Notice(`❌ 清除失败: ${getErrorMessage(error)}`);
         }
     };
 
@@ -447,10 +448,7 @@ export class AssociationView extends ItemView {
      */
     private setupConceptEventListener(): void {
         // Create and store the event listener
-        this.conceptEventListener = ((event: CustomEvent<{
-            note: { path: string; title: string; content: string };
-            concepts: ExtractedConceptWithMatch[];
-        }>) => {
+        this.conceptEventListener = (event) => {
             const { note, concepts } = event.detail;
             this.extractedConcepts = [{
                 notePath: note.path,
@@ -458,20 +456,12 @@ export class AssociationView extends ItemView {
                 concepts: concepts,
             }];
             this.renderReact();
-        }) as EventListener;
+        };
 
         window.addEventListener('memo-echo:concepts-extracted', this.conceptEventListener);
 
         // Setup batch increment event listener for real-time updates
-        this.batchIncrementEventListener = ((event: CustomEvent<{
-            batch: Array<{
-                note: { path: string; title: string; content: string };
-                concepts: ExtractedConceptWithMatch[];
-            }>;
-            totalFiles: number;
-            processedFiles: number;
-            totalConcepts: number;
-        }>) => {
+        this.batchIncrementEventListener = (event) => {
             const { batch, totalFiles, processedFiles, totalConcepts } = event.detail;
 
             console.log('[AssociationView] Batch increment received:', {
@@ -499,15 +489,12 @@ export class AssociationView extends ItemView {
             this.isBatchProcessing = this.batchProgress.isProcessing;
 
             this.renderReact();
-        }) as EventListener;
+        };
 
         window.addEventListener('memo-echo:batch-increment', this.batchIncrementEventListener);
 
         // Setup batch stop event listener
-        this.batchStopEventListener = ((event: CustomEvent<{
-            processedFiles: number;
-            totalConcepts: number;
-        }>) => {
+        this.batchStopEventListener = (event) => {
             const { processedFiles, totalConcepts } = event.detail;
 
             this.isBatchProcessing = false;
@@ -517,7 +504,7 @@ export class AssociationView extends ItemView {
                 processedFiles,
                 totalConcepts,
             });
-        }) as EventListener;
+        };
 
         window.addEventListener('memo-echo:batch-stop', this.batchStopEventListener);
     }

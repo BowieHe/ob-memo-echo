@@ -13,6 +13,7 @@ import {
 } from './vector-backend';
 import { generateUUID } from '@utils/uuid';
 import { Notice } from 'obsidian';
+import type { ConceptPayload } from '@core/types/concept-registry';
 
 export class QdrantBackend implements VectorBackend {
     private client: QdrantClient;
@@ -67,9 +68,13 @@ export class QdrantBackend implements VectorBackend {
             console.log(`[Qdrant] Creating collection with Named Vectors, dimension ${dimension}`);
             await this.client.createCollection(this.collectionName, {
                 vectors: {
+                    // Chunk vectors
                     [VECTOR_NAMES.CONTENT]: { size: dimension, distance: 'Cosine' },
                     [VECTOR_NAMES.SUMMARY]: { size: dimension, distance: 'Cosine' },
                     [VECTOR_NAMES.TITLE]: { size: dimension, distance: 'Cosine' },
+                    // Concept vectors (v0.7.0+)
+                    concept_vec: { size: dimension, distance: 'Cosine' },
+                    concept_summary_vec: { size: dimension, distance: 'Cosine' },
                 },
             });
             console.log('[Qdrant] Collection created successfully');
@@ -216,6 +221,287 @@ export class QdrantBackend implements VectorBackend {
         } catch (error) {
             console.log('[Qdrant] Collection does not exist, will be created on next upsert');
             // Collection will be created on first upsert
+        }
+    }
+
+    // ==================== Concept Registry Methods (v0.7.0+) ====================
+
+    /**
+     * Create or update a concept record using Named Vectors
+     */
+    async upsertConcept(
+        concept: string,
+        summary: string,
+        link: string,
+        conceptVector: number[],
+        summaryVector: number[]
+    ): Promise<void> {
+        // Ensure collection exists with concept vectors
+        if (this.vectorSize === null) {
+            this.vectorSize = conceptVector.length;
+            await this.ensureCollection(this.vectorSize);
+        }
+
+        const id = `concept|${concept}`;
+        const now = new Date().toISOString();
+
+        // Check if concept already exists
+        const existing = await this.getConcept(concept);
+
+        if (existing) {
+            // Update existing concept
+            await this.client.upsert(this.collectionName, {
+                points: [{
+                    id,
+                    vector: {
+                        concept_vec: conceptVector,
+                        concept_summary_vec: summaryVector,
+                    },
+                    payload: {
+                        ...existing,
+                        summary,
+                        link,
+                        lastUsedAt: now,
+                    } as ConceptPayload,
+                }],
+            });
+            console.log(`[Qdrant] Updated concept: ${concept}`);
+        } else {
+            // Create new concept
+            await this.client.upsert(this.collectionName, {
+                points: [{
+                    id,
+                    vector: {
+                        concept_vec: conceptVector,
+                        concept_summary_vec: summaryVector,
+                    },
+                    payload: {
+                        type: 'concept',
+                        concept,
+                        summary,
+                        link,
+                        noteCount: 1,
+                        firstSeenAt: now,
+                        lastUsedAt: now,
+                    } as ConceptPayload,
+                }],
+            });
+            console.log(`[Qdrant] Created concept: ${concept}`);
+        }
+    }
+
+    /**
+     * Search for similar concepts using only concept_vec (strict matching)
+     */
+    async searchSimilarConceptsStrict(
+        queryVector: number[],
+        options: { limit?: number; scoreThreshold?: number } = {}
+    ): Promise<Array<{ id: string; score: number; payload: ConceptPayload }>> {
+        const limit = options.limit || 10;
+        const scoreThreshold = options.scoreThreshold ?? 0.90;
+
+        try {
+            const results = await this.client.search(this.collectionName, {
+                vector: {
+                    name: 'concept_vec',
+                    vector: queryVector,
+                },
+                limit,
+                score_threshold: scoreThreshold,
+                with_payload: true,
+                filter: {
+                    must: [{ key: 'type', match: { value: 'concept' } }],
+                },
+            });
+
+            // Type assertion to handle Qdrant client response format
+            const searchResults = results as any;
+            const points = searchResults.points || searchResults || [];
+
+            return (Array.isArray(points) ? points : [points]).map((point: any) => ({
+                id: point.id as string,
+                score: point.score || 0,
+                payload: point.payload as unknown as ConceptPayload,
+            }));
+        } catch (error) {
+            console.warn('[Qdrant] Search failed:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Search for similar concepts using RRF fusion of concept_vec and concept_summary_vec (loose matching)
+     */
+    async searchSimilarConceptsLoose(
+        conceptVector: number[],
+        summaryVector: number[],
+        options: { limit?: number; scoreThreshold?: number } = {}
+    ): Promise<Array<{ id: string; score: number; payload: ConceptPayload }>> {
+        const limit = options.limit || 10;
+        const scoreThreshold = options.scoreThreshold ?? 0.85;
+
+        try {
+            const results = await this.client.query(this.collectionName, {
+                prefetch: [
+                    {
+                        query: conceptVector,
+                        using: 'concept_vec',
+                        limit: limit * 2,
+                    },
+                    {
+                        query: summaryVector,
+                        using: 'concept_summary_vec',
+                        limit: limit * 2,
+                    },
+                ],
+                query: { fusion: 'rrf' },
+                limit,
+                score_threshold: scoreThreshold,
+                with_payload: true,
+                filter: {
+                    must: [{ key: 'type', match: { value: 'concept' } }],
+                },
+            });
+
+            // Type assertion to handle Qdrant client response format
+            const queryResults = results as any;
+            const points = queryResults.points || queryResults || [];
+
+            return (Array.isArray(points) ? points : [points]).map((point: any) => ({
+                id: point.id as string,
+                score: point.score || 0,
+                payload: point.payload as unknown as ConceptPayload,
+            }));
+        } catch (error) {
+            console.warn('[Qdrant] Query failed:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Scroll through all concepts
+     */
+    async scrollConcepts(options: { limit?: number; offset?: string } = {}
+    ): Promise<{ points: Array<{ payload: ConceptPayload }>; nextPage: string | null }> {
+        const limit = options.limit || 100;
+        const offset = options.offset;
+
+        try {
+            const result = await this.client.scroll(this.collectionName, {
+                limit,
+                offset,
+                with_payload: true,
+                with_vector: false,
+                filter: {
+                    must: [{ key: 'type', match: { value: 'concept' } }],
+                },
+            });
+
+            // Handle scroll result format
+            const scrollResult = result as any;
+            const points = scrollResult.points || scrollResult || [];
+
+            return {
+                points: (Array.isArray(points) ? points : [points]).map((point: any) => ({
+                    payload: point.payload as unknown as ConceptPayload,
+                })),
+                nextPage: (scrollResult.next_page_offset as string | undefined) || null,
+            };
+        } catch (error) {
+            console.warn('[Qdrant] Scroll failed:', error);
+            return { points: [], nextPage: null };
+        }
+    }
+
+    /**
+     * Get a single concept by name
+     */
+    async getConcept(concept: string): Promise<ConceptPayload | null> {
+        try {
+            const results = await this.client.search(this.collectionName, {
+                vector: {
+                    name: 'concept_vec',
+                    vector: new Array(768).fill(0), // Placeholder vector (not used for filtering)
+                },
+                limit: 1,
+                with_payload: true,
+                with_vector: false,
+                filter: {
+                    must: [
+                        { key: 'type', match: { value: 'concept' } },
+                        { key: 'concept', match: { value: concept } },
+                    ],
+                },
+            });
+
+            // Type assertion to handle Qdrant client response format
+            const searchResults = results as any;
+            const points = searchResults.points || searchResults || [];
+            const pointsArray = Array.isArray(points) ? points : [points];
+
+            if (pointsArray.length > 0) {
+                return pointsArray[0].payload as unknown as ConceptPayload;
+            }
+            return null;
+        } catch (error) {
+            console.warn('[Qdrant] Get concept failed:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Update concept usage count and last used timestamp
+     */
+    async updateConceptUsage(concept: string): Promise<void> {
+        try {
+            const existing = await this.getConcept(concept);
+            if (!existing) {
+                console.warn(`[Qdrant] Concept not found for update: ${concept}`);
+                return;
+            }
+
+            // Note: We need to re-embed to update, as Qdrant requires vectors for upsert
+            // This is a limitation - in production, you might want to cache vectors
+            console.log(`[Qdrant] Concept usage update requires re-embedding: ${concept}`);
+            // The caller should handle re-embedding and call upsertConcept directly
+        } catch (error) {
+            console.error('[Qdrant] Update concept usage failed:', error);
+        }
+    }
+
+    /**
+     * Update concept usage with pre-computed vectors (more efficient)
+     */
+    async updateConceptUsageWithVectors(
+        concept: string,
+        conceptVector: number[],
+        summaryVector: number[]
+    ): Promise<void> {
+        try {
+            const existing = await this.getConcept(concept);
+            if (!existing) {
+                console.warn(`[Qdrant] Concept not found for update: ${concept}`);
+                return;
+            }
+
+            const now = new Date().toISOString();
+            await this.client.upsert(this.collectionName, {
+                points: [{
+                    id: `concept|${concept}`,
+                    vector: {
+                        concept_vec: conceptVector,
+                        concept_summary_vec: summaryVector,
+                    },
+                    payload: {
+                        ...existing,
+                        noteCount: existing.noteCount + 1,
+                        lastUsedAt: now,
+                    } as ConceptPayload,
+                }],
+            });
+            console.log(`[Qdrant] Updated concept usage: ${concept} (count: ${existing.noteCount + 1})`);
+        } catch (error) {
+            console.error('[Qdrant] Update concept usage with vectors failed:', error);
         }
     }
 }

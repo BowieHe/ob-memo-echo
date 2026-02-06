@@ -1,12 +1,11 @@
 import type { App, TFile } from 'obsidian';
 import type { ConceptExtractionSettings, ConceptExtractionResult, ConfirmedConcept, ExtractedConceptWithMatch } from '@core/types/concept';
-import type { DetailedConceptExtraction } from '@core/types/extraction';
 import { ConceptMatcher } from './concept-matcher';
 import { NoteTypeDetector } from './note-type-detector';
 import { ConceptDictionaryStore } from './concept-dictionary-store';
-import { getMaxConceptsForLength } from './concept-count-rules';
 import { ConceptExtractor } from './concept-extractor';
 import { FrontmatterService } from './frontmatter-service';
+import { ConceptRegistry } from './concept-registry';
 
 export class ConceptExtractionPipeline {
     private app: App;
@@ -15,12 +14,14 @@ export class ConceptExtractionPipeline {
     private settings: ConceptExtractionSettings;
     private detector: NoteTypeDetector;
     private dictionaryStore: ConceptDictionaryStore;
+    private conceptRegistry?: ConceptRegistry; // v0.7.0+: Optional concept registry for deduplication
 
     constructor(
         app: App,
         extractor: ConceptExtractor,
         frontmatterService: FrontmatterService,
-        settings: ConceptExtractionSettings
+        settings: ConceptExtractionSettings,
+        conceptRegistry?: ConceptRegistry // v0.7.0+: Optional parameter
     ) {
         this.app = app;
         this.extractor = extractor;
@@ -28,12 +29,20 @@ export class ConceptExtractionPipeline {
         this.settings = settings;
         this.detector = new NoteTypeDetector(settings.skipRules);
         this.dictionaryStore = new ConceptDictionaryStore(app, settings.skipRules.conceptDictionaryPath);
+        this.conceptRegistry = conceptRegistry;
     }
 
     updateSettings(settings: ConceptExtractionSettings): void {
         this.settings = settings;
         this.detector = new NoteTypeDetector(settings.skipRules);
         this.dictionaryStore = new ConceptDictionaryStore(this.app, settings.skipRules.conceptDictionaryPath);
+    }
+
+    /**
+     * v0.7.0+: Update or set the concept registry
+     */
+    setConceptRegistry(registry: ConceptRegistry | undefined): void {
+        this.conceptRegistry = registry;
     }
 
     async extract(note: { path: string; title: string; content: string; tags?: string[] }): Promise<ConceptExtractionResult> {
@@ -56,7 +65,7 @@ export class ConceptExtractionPipeline {
             conceptCount: Object.keys(dictionary.concepts).length,
         });
         const matcher = new ConceptMatcher(dictionary);
-        const maxConcepts = getMaxConceptsForLength(this.getTextLength(note.content), this.settings.conceptCountRules);
+        const maxConcepts = this.getMaxConceptsForLength(this.getTextLength(note.content));
         console.debug('Concept extraction parameters', { maxConcepts });
 
         const detailed = await this.extractor.extractDetailed(note.content, note.title, {
@@ -74,6 +83,36 @@ export class ConceptExtractionPipeline {
             return { skipped: true, reason: detailed.skipReason, noteType: detailed.noteType };
         }
 
+        // v0.7.0+: Use ConceptRegistry for deduplication if available
+        if (this.conceptRegistry) {
+            const concepts: ExtractedConceptWithMatch[] = [];
+            for (const extracted of detailed.concepts) {
+                // Use registry to match or create concept
+                const matchResult = await this.conceptRegistry.registerOrMatch(
+                    extracted.name,
+                    extracted.reason
+                );
+
+                concepts.push({
+                    name: matchResult.concept, // Use matched concept name
+                    confidence: extracted.confidence,
+                    reason: extracted.reason,
+                    matchInfo: {
+                        originalTerm: extracted.name,
+                        matchedConcept: matchResult.concept,
+                        matchType: matchResult.isNew ? 'new' : 'alias',
+                        confidence: matchResult.similarity,
+                    },
+                });
+            }
+            return {
+                skipped: false,
+                concepts,
+                noteType: detailed.noteType,
+            };
+        }
+
+        // Fallback: Use original logic without registry
         const concepts: ExtractedConceptWithMatch[] = detailed.concepts.map((concept) => ({
             name: concept.name,
             confidence: concept.confidence,
@@ -161,4 +200,22 @@ export class ConceptExtractionPipeline {
             .trim()
             .length;
     }
+
+
+    private getMaxConceptsForLength(textLength: number): number {
+        const rules = [
+            { minChars: 0, maxChars: 199, maxConcepts: 1 },
+            { minChars: 200, maxChars: 499, maxConcepts: 2 },
+            { minChars: 500, maxChars: 999, maxConcepts: 3 },
+            { minChars: 1000, maxChars: Infinity, maxConcepts: 4 },
+        ]
+        for (const rule of rules) {
+            if (textLength >= rule.minChars && textLength < rule.maxChars) {
+                return rule.maxConcepts;
+            }
+        }
+
+        return 4;
+    }
+
 }

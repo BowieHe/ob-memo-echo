@@ -1,6 +1,7 @@
 /**
  * ParagraphDetector - Detects paragraph completion in editor
  * Triggers recommendation when user completes a paragraph
+ * 用户输入实时反馈
  */
 
 import type { ParagraphCompletionEvent, ParagraphDetectorConfig } from '@core/types/frontmatter';

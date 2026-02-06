@@ -29,15 +29,6 @@ export interface ChunkResult {
 }
 
 /**
- * Configuration for Chunker
- */
-export interface ChunkerConfig {
-    minChunkSize?: number;
-    maxChunkSize?: number;
-    overlapSize?: number;
-}
-
-/**
  * Chunk cached in memory
  */
 export interface CachedChunk {

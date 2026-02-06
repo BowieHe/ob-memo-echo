@@ -74,8 +74,8 @@ export const SEARCH_DEFAULTS = {
 /**
  * View Type Constants - Obsidian View registration
  */
-export const VIEW_TYPE_ASSOCIATION = 'association-view';
-export const VIEW_TYPE_UNIFIED_SEARCH = 'unified-search-view';
+export const VIEW_TYPE_CONCEPT = 'concept-view';
+export const VIEW_TYPE_INDEX_SEARCH = 'index-search-view';
 
 /**
  * Category Keywords - for metadata extraction

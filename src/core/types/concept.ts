@@ -1,4 +1,4 @@
-import type { ConceptSkipConfig } from './setting';
+import type { ConceptSkipConfig } from "./setting";
 
 export interface ConceptDictionary {
     version: string;
@@ -15,16 +15,10 @@ export interface ConceptEntry {
 }
 
 export interface ConceptMatch {
-    originalTerm: string;
-    matchedConcept: string;
-    matchType: 'exact' | 'alias' | 'new';
-    confidence: number;
-}
-
-export interface ConceptCountRule {
-    minChars: number;
-    maxChars: number;
-    maxConcepts: number;
+    originalTerm: string; // 文档中找到的原始词
+    matchedConcept: string; // 匹配到的标准化概念名
+    matchType: "exact" | "alias" | "new"; // 匹配类型
+    confidence: number; // 这个匹配的置信度 (0-1)
 }
 
 export interface SkipRules {
@@ -35,7 +29,13 @@ export interface SkipRules {
 }
 
 export interface NoteTypeDetection {
-    type: 'article' | 'normal' | 'vocabulary' | 'daily' | 'image-collection' | 'template';
+    type:
+        | "article"
+        | "normal"
+        | "vocabulary"
+        | "daily"
+        | "image-collection"
+        | "template";
     confidence: number;
     shouldSkip: boolean;
     reason?: string;
@@ -46,7 +46,6 @@ export interface ConceptExtractionSettings {
     injectToFrontmatter: boolean;
     autoCreateConceptPage: boolean;
     conceptPagePrefix: string;
-    conceptCountRules: ConceptCountRule[];
     skipRules: ConceptSkipConfig;
     conceptDictionaryPath: string;
 }
@@ -69,5 +68,5 @@ export interface ConceptExtractionResult {
     skipped: boolean;
     reason?: string;
     concepts?: ExtractedConceptWithMatch[];
-    noteType?: NoteTypeDetection['type'];
+    noteType?: NoteTypeDetection["type"];
 }

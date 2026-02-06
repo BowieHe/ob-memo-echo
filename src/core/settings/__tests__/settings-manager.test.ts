@@ -32,19 +32,12 @@ const mockSettings: MemoEchoSettings = {
 
     // Other concept settings
     enableConceptExtraction: true,
-    conceptCountRules: [
-        { minChars: 0, maxChars: 199, maxConcepts: 1 },
-        { minChars: 200, maxChars: 499, maxConcepts: 2 },
-        { minChars: 500, maxChars: 999, maxConcepts: 3 },
-        { minChars: 1000, maxChars: Infinity, maxConcepts: 4 },
-    ],
 
     // Association config
     association: { ...DEFAULT_ASSOCIATION_CONFIG },
     associationIgnoredAssociations: [],
     associationDeletedConcepts: {},
 
-    debugLogging: true,
 };
 
 // Mock service updaters
@@ -76,7 +69,6 @@ describe('SettingsManager', () => {
         mockSettings.conceptFE = { ...DEFAULT_CONCEPT_FE_CONFIG };
         mockSettings.conceptSkip = { ...DEFAULT_CONCEPT_SKIP_CONFIG };
         mockSettings.association = { ...DEFAULT_ASSOCIATION_CONFIG };
-        mockSettings.debugLogging = true;
 
         // Create new SettingsManager instance
         settingsManager = new SettingsManager(
@@ -246,16 +238,6 @@ describe('SettingsManager', () => {
 
             expect(result.success).toBe(false);
             expect(result.errors?.[0].field).toBe('minTextLength');
-        });
-    });
-
-    describe('Debug Settings', () => {
-        it('should update and initialize debug logging', async () => {
-            const result = await settingsManager.updateDebugLogging(false);
-
-            expect(result.success).toBe(true);
-            expect(mockSettings.debugLogging).toBe(false);
-            expect(mockSaveSettings).toHaveBeenCalled();
         });
     });
 

@@ -3,19 +3,15 @@
  * Ported from Rust implementation
  */
 
-import type { Header, ChunkResult, ChunkerConfig } from '@core/types/indexing';
+import type { Header, ChunkResult } from '@core/types/indexing';
 
-export type { Header, ChunkResult, ChunkerConfig };
+export type { Header, ChunkResult };
 
 export class Chunker {
-    private minChunkSize: number;
     private maxChunkSize: number;
-    private overlapSize: number;
 
-    constructor(config: ChunkerConfig = {}) {
-        this.minChunkSize = config.minChunkSize || 100;
-        this.maxChunkSize = config.maxChunkSize || 800;
-        this.overlapSize = config.overlapSize || 50;
+    constructor(maxChunkSize: number = 800) {
+        this.maxChunkSize = maxChunkSize;
     }
 
     /**

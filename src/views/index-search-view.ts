@@ -4,7 +4,7 @@ import type { SearchResult } from '../services/vector-backend';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Sidebar } from '../components/Sidebar';
-import { VIEW_TYPE_UNIFIED_SEARCH } from '../core/constants';
+import { VIEW_TYPE_INDEX_SEARCH } from '../core/constants';
 
 /**
  * UnifiedSearchView - Combines Search and Recommendation functionality
@@ -13,10 +13,10 @@ import { VIEW_TYPE_UNIFIED_SEARCH } from '../core/constants';
  * - When search box is empty: Shows ambient recommendations (auto-updates on paragraph changes)
  * - When search box has content: Shows search results
  */
-export class UnifiedSearchView extends ItemView {
+export class IndexSearchView extends ItemView {
     private indexManager: VectorIndexManager;
     private onIndexCurrentFile: () => Promise<void>;
-    private container: HTMLElement;
+    private container!: HTMLElement;
     private root: Root | null = null;
 
     constructor(
@@ -30,7 +30,7 @@ export class UnifiedSearchView extends ItemView {
     }
 
     getViewType(): string {
-        return VIEW_TYPE_UNIFIED_SEARCH;
+        return VIEW_TYPE_INDEX_SEARCH;
     }
 
     getDisplayText(): string {
@@ -77,18 +77,18 @@ export class UnifiedSearchView extends ItemView {
     /**
      * Handle index current file button click
      */
-    private handleIndexCurrentFile = async () => {
-        await this.onIndexCurrentFile();
+    private handleIndexCurrentFile = () => {
+        void this.onIndexCurrentFile();
     };
 
     /**
      * Handle file open event from React
      */
-    private handleOpenFile = async (event: any) => {
-        const result = event.detail as SearchResult;
+    private handleOpenFile = (event: WindowEventMap['memo-echo:open-file']) => {
+        const result = event.detail;
         if (!result || !result.metadata.filePath) return;
 
-        await this.jumpToResult(result);
+        void this.jumpToResult(result);
     };
 
     /**

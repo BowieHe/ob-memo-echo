@@ -104,15 +104,6 @@ export class SettingsManager {
     }
 
     /**
-     * Update debug logging setting
-     */
-    async updateDebugLogging(enabled: boolean): Promise<SettingsUpdateResult> {
-        this.settings.debugLogging = enabled;
-        await this.saveSettings();
-        return { success: true };
-    }
-
-    /**
      * Generic group update method
      */
     private async updateGroup<T extends object>(
@@ -161,4 +152,3 @@ export class SettingsManager {
         return JSON.parse(JSON.stringify(this.settings));
     }
 }
- 

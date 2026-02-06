@@ -674,7 +674,7 @@
 }
 
 .memo-echo-index-primary-btn {
-    background: #F97316;
+    background: #f97316;
     border: none;
     border-radius: 6px;
     color: white;
@@ -695,7 +695,7 @@
 }
 
 .memo-echo-index-primary-btn:hover:not(:disabled) {
-    background-color: #EA580C;
+    background-color: #ea580c;
     transform: scale(1.02);
 }
 
@@ -750,10 +750,10 @@
     overflow: hidden;
 }
 /* ============================================================
-   Association View Styles (v0.6.0)
+   Concept View Styles (v0.6.0)
    ============================================================ */
 
-.association-view {
+.concept-view {
     padding: 10px;
     height: 100%;
     display: flex;

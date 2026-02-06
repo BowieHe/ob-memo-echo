@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NoteAssociation } from "@services/association-engine";
+import { ExtractedConceptWithMatch } from "@core/types/concept";
 
 export interface AssociationPanelProps {
     associations: NoteAssociation[];
@@ -18,12 +19,13 @@ export interface AssociationPanelProps {
     extractedConcepts?: Array<{
         notePath: string;
         noteTitle: string;
-        concepts: any[];
+        concepts: ExtractedConceptWithMatch[];
     }>;
     onApplyConcepts: (
         selectedGroups: Array<{
             notePath: string;
-            concepts: any[];
+            noteTitle: string;
+            concepts: ExtractedConceptWithMatch[];
         }>,
     ) => Promise<void>;
     onClearConcepts: () => void;
@@ -32,7 +34,7 @@ export interface AssociationPanelProps {
     onApplySingleConcept?: (group: {
         notePath: string;
         noteTitle: string;
-        concepts: any[];
+        concepts: ExtractedConceptWithMatch[];
     }) => Promise<void>;
     isBatchProcessing: boolean;
     onStopBatch: () => void;
@@ -82,8 +84,14 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
             const concept = group?.concepts.find(
                 (c: any) => c.name === conceptName,
             );
-            if (concept) {
-                await onApplyConcepts([{ notePath, concepts: [concept] }]);
+            if (concept && group) {
+                await onApplyConcepts([
+                    {
+                        notePath: group.notePath,
+                        noteTitle: group.noteTitle,
+                        concepts: [concept],
+                    },
+                ]);
             }
         }
     };
@@ -178,6 +186,7 @@ interface ConceptListInlineProps {
     onApply: (
         selectedGroups: Array<{
             notePath: string;
+            noteTitle: string;
             concepts: any[];
         }>,
     ) => Promise<void>;
@@ -264,10 +273,7 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
         setSelectedFiles(new Set());
     };
 
-    const handleApplySingle = async (
-        conceptName: string,
-        notePath: string,
-    ) => {
+    const handleApplySingle = async (conceptName: string, notePath: string) => {
         setIsProcessing(true);
         try {
             await onApplySingle?.(conceptName, notePath);
@@ -467,9 +473,7 @@ const AssociationList: React.FC<AssociationListProps> = ({
     return (
         <div className="memo-echo-association-list">
             <div className="memo-echo-association-list-header">
-                <span>
-                    🔗 关联建议 ({associations.length}个)
-                </span>
+                <span>🔗 关联建议 ({associations.length}个)</span>
             </div>
             {associations.map((association, index) => (
                 <div key={index} className="memo-echo-association-item">
@@ -477,24 +481,35 @@ const AssociationList: React.FC<AssociationListProps> = ({
                         <div className="memo-echo-association-note">
                             <span
                                 className="memo-echo-association-note-link"
-                                onClick={() => onOpenFile(association.sourceNoteId)}
+                                onClick={() =>
+                                    onOpenFile(association.sourceNoteId)
+                                }
                             >
-                                📄 {association.sourceNoteTitle || association.sourceNoteId}
+                                📄{" "}
+                                {association.sourceNoteTitle ||
+                                    association.sourceNoteId}
                             </span>
                         </div>
                         <div className="memo-echo-association-arrow">↔</div>
                         <div className="memo-echo-association-note">
                             <span
                                 className="memo-echo-association-note-link"
-                                onClick={() => onOpenFile(association.targetNoteId)}
+                                onClick={() =>
+                                    onOpenFile(association.targetNoteId)
+                                }
                             >
-                                📄 {association.targetNoteTitle || association.targetNoteId}
+                                📄{" "}
+                                {association.targetNoteTitle ||
+                                    association.targetNoteId}
                             </span>
                         </div>
                     </div>
                     <div className="memo-echo-association-concepts">
                         {association.sharedConcepts.map((concept) => (
-                            <span key={concept} className="memo-echo-association-concept-tag">
+                            <span
+                                key={concept}
+                                className="memo-echo-association-concept-tag"
+                            >
                                 [[{concept}]]
                             </span>
                         ))}
@@ -505,7 +520,9 @@ const AssociationList: React.FC<AssociationListProps> = ({
                         </span>
                         {association.vectorSimilarity !== undefined && (
                             <span className="memo-echo-association-similarity">
-                                相似度: {Math.round(association.vectorSimilarity * 100)}%
+                                相似度:{" "}
+                                {Math.round(association.vectorSimilarity * 100)}
+                                %
                             </span>
                         )}
                     </div>

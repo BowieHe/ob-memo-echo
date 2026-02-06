@@ -1,6 +1,6 @@
 import { Plugin, TFile, Notice } from 'obsidian';
-import { UnifiedSearchView } from './views/unified-search-view';
-import { AssociationView } from './views/association-view';
+import { IndexSearchView } from './views/index-search-view';
+import { ConceptView } from './views/concept-view';
 import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './views/settings';
 import { EmbeddingService } from './services/embedding-service';
 import type { VectorBackend } from './services/vector-backend';
@@ -8,11 +8,12 @@ import { QdrantBackend } from './services/qdrant-backend';
 import { Chunker } from './services/chunker';
 import { MetadataExtractor } from './services/metadata-extractor';
 import { VectorIndexManager } from './services/vector-index-manager';
-import { VIEW_TYPE_UNIFIED_SEARCH, VIEW_TYPE_ASSOCIATION } from './core/constants';
+import { VIEW_TYPE_INDEX_SEARCH, VIEW_TYPE_CONCEPT } from './core/constants';
 import { ParagraphDetector } from './services/paragraph-detector';
 import { FrontmatterService } from './services/frontmatter-service';
 import { ConceptExtractor } from './services/concept-extractor';
 import { ConceptExtractionPipeline } from './services/concept-extraction-pipeline';
+import { ConceptRegistry } from './services/concept-registry';
 import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
 import type { ConceptExtractionSettings, ConfirmedConcept, ExtractedConceptWithMatch } from './core/types/concept';
@@ -20,8 +21,8 @@ import { SettingsManager } from './core/settings/settings-manager';
 import { getErrorMessage } from '@utils/error';
 
 export default class MemoEchoPlugin extends Plugin {
-    private unifiedSearchView: UnifiedSearchView | null = null;
-    private associationView: AssociationView | null = null;
+    private indexSearchView: IndexSearchView | null = null;
+    private conceptView: ConceptView | null = null;
 
     // Settings
     settings!: MemoEchoSettings;
@@ -43,6 +44,9 @@ export default class MemoEchoPlugin extends Plugin {
     conceptExtractor!: ConceptExtractor;
     conceptExtractionPipeline!: ConceptExtractionPipeline;
 
+    // v0.7.0 services
+    conceptRegistry!: ConceptRegistry;
+
     // v0.6.0 services
     associationEngine!: SimpleAssociationEngine;
     associationPreferences!: AssociationPreferences;
@@ -58,12 +62,7 @@ export default class MemoEchoPlugin extends Plugin {
         console.log('📝 Loaded settings:', this.settings);
 
         // Initialize services with saved settings
-        this.embeddingService = new EmbeddingService({
-            provider: this.settings.embeddingConfig.provider,
-            ollamaUrl: this.settings.embeddingConfig.baseUrl,
-            ollamaModel: this.settings.embeddingConfig.model,
-            openaiApiKey: this.settings.embeddingConfig.apiKey,
-        });
+        this.embeddingService = new EmbeddingService(this.settings.embeddingConfig);
         console.log(`🤖 Embedding service initialized: ${this.settings.embeddingConfig.provider}`);
 
         // VectorBackend - using Qdrant by default (v0.5.0)
@@ -73,22 +72,11 @@ export default class MemoEchoPlugin extends Plugin {
         );
         console.log(`🗄️ Vector backend initialized: Qdrant @ ${this.settings.qdrantUrl}`);
 
-        this.chunker = new Chunker({
-            minChunkSize: 500,
-            maxChunkSize: 800,
-            overlapSize: 100,
-        });
+        this.chunker = new Chunker(500);
         console.log('✂️ Chunker initialized');
 
         // v0.2.0: Initialize metadata extractor
-        this.metadataExtractor = new MetadataExtractor({
-            provider: this.settings.llmConfig.provider,
-            ollamaUrl: this.settings.llmConfig.baseUrl,
-            ollamaModel: this.settings.llmConfig.model,
-            openaiUrl: this.settings.llmConfig.baseUrl,
-            openaiModel: this.settings.llmConfig.model,
-            openaiApiKey: this.settings.llmConfig.apiKey
-        });
+        this.metadataExtractor = new MetadataExtractor(this.settings.llmConfig);
         console.log('🏷️ Metadata extractor initialized');
 
         // v0.5.0: Initialize concept extractor
@@ -134,11 +122,24 @@ export default class MemoEchoPlugin extends Plugin {
         );
         console.log('📝 Frontmatter service initialized');
 
+        // v0.7.0: Initialize concept registry
+        this.conceptRegistry = new ConceptRegistry(
+            this.vectorBackend as QdrantBackend,
+            this.embeddingService,
+            {
+                similarityThreshold: 0.85,
+                updateSummary: false,
+                conceptPagePrefix: this.settings.conceptFE.conceptPagePrefix,
+            }
+        );
+        console.log('💡 Concept registry initialized');
+
         this.conceptExtractionPipeline = new ConceptExtractionPipeline(
             this.app,
             this.conceptExtractor,
             this.frontmatterService,
-            this.getConceptExtractionSettings()
+            this.getConceptExtractionSettings(),
+            this.conceptRegistry
         );
 
         // Initialize SettingsManager with service updaters
@@ -193,22 +194,22 @@ export default class MemoEchoPlugin extends Plugin {
 
         // Register the unified search view (combines search + recommendations)
         this.registerView(
-            VIEW_TYPE_UNIFIED_SEARCH,
+            VIEW_TYPE_INDEX_SEARCH,
             (leaf) => {
-                this.unifiedSearchView = new UnifiedSearchView(
+                this.indexSearchView = new IndexSearchView(
                     leaf,
                     this.indexManager,
                     this.indexCurrentFileWithConcepts,
                 );
-                return this.unifiedSearchView;
+                return this.indexSearchView;
             }
         );
 
         // v0.6.0: Register association view
         this.registerView(
-            VIEW_TYPE_ASSOCIATION,
+            VIEW_TYPE_CONCEPT,
             (leaf) => {
-                this.associationView = new AssociationView(
+                this.conceptView = new ConceptView(
                     leaf,
                     this.associationEngine,
                     this.frontmatterService,
@@ -217,7 +218,7 @@ export default class MemoEchoPlugin extends Plugin {
                     this.handleCurrentFileAssociation,
                     this.handleAllFilesAssociation,
                 );
-                return this.associationView;
+                return this.conceptView;
             }
         );
 
@@ -271,21 +272,21 @@ export default class MemoEchoPlugin extends Plugin {
             this.indexManager.stop();
         }
 
-        this.app.workspace.detachLeavesOfType(VIEW_TYPE_UNIFIED_SEARCH);
-        this.app.workspace.detachLeavesOfType(VIEW_TYPE_ASSOCIATION);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_INDEX_SEARCH);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONCEPT);
     }
 
     async activateUnifiedSearchView() {
         const { workspace } = this.app;
 
-        let leaf = workspace.getLeavesOfType(VIEW_TYPE_UNIFIED_SEARCH)[0];
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_INDEX_SEARCH)[0];
 
         if (!leaf) {
             // Create new view in right sidebar
             const rightLeaf = workspace.getRightLeaf(false);
             if (rightLeaf) {
                 await rightLeaf.setViewState({
-                    type: VIEW_TYPE_UNIFIED_SEARCH,
+                    type: VIEW_TYPE_INDEX_SEARCH,
                     active: true,
                 });
                 leaf = rightLeaf;
@@ -324,7 +325,6 @@ export default class MemoEchoPlugin extends Plugin {
             injectToFrontmatter: this.settings.conceptFE.injectToFrontmatter,
             autoCreateConceptPage: this.settings.conceptFE.autoCreateConceptPage,
             conceptPagePrefix: this.settings.conceptFE.conceptPagePrefix,
-            conceptCountRules: this.settings.conceptCountRules,
             skipRules: this.settings.conceptSkip,
             conceptDictionaryPath: this.settings.conceptSkip.conceptDictionaryPath,
         };
@@ -339,13 +339,13 @@ export default class MemoEchoPlugin extends Plugin {
     async activateAssociationView() {
         const { workspace } = this.app;
 
-        let leaf = workspace.getLeavesOfType(VIEW_TYPE_ASSOCIATION)[0];
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_CONCEPT)[0];
 
         if (!leaf) {
             const rightLeaf = workspace.getRightLeaf(false);
             if (rightLeaf) {
                 await rightLeaf.setViewState({
-                    type: VIEW_TYPE_ASSOCIATION,
+                    type: VIEW_TYPE_CONCEPT,
                     active: true,
                 });
                 leaf = rightLeaf;
@@ -567,8 +567,8 @@ export default class MemoEchoPlugin extends Plugin {
      */
     private setupConceptEventListeners() {
         // Listen for concept apply events from sidebar
-        window.addEventListener('memo-echo:concepts-apply', async (event: Event) => {
-            const concepts = (event as CustomEvent<ConfirmedConcept[]>).detail;
+        window.addEventListener('memo-echo:concepts-apply', async (event) => {
+            const concepts = event.detail;
             const pendingFile = (this as any).pendingConceptFile as TFile | undefined;
 
             if (!pendingFile) {
@@ -588,14 +588,8 @@ export default class MemoEchoPlugin extends Plugin {
         });
 
         // Listen for batch concepts apply events
-        window.addEventListener('memo-echo:batch-concepts-apply', async (event: Event) => {
-            const { groups } = (event as CustomEvent<{
-                groups: Array<{
-                    notePath: string;
-                    noteTitle: string;
-                    concepts: ExtractedConceptWithMatch[];
-                }>;
-            }>).detail;
+        window.addEventListener('memo-echo:batch-concepts-apply', async (event) => {
+            const { groups } = event.detail;
 
             console.log('[MemoEcho] Batch concepts apply requested for', groups.length, 'files');
 
@@ -626,9 +620,9 @@ export default class MemoEchoPlugin extends Plugin {
                 new Notice(`✅ 已应用 ${conceptCount} 个概念到 ${appliedCount} 个文件`);
 
                 // Refresh associations after batch apply
-                if (this.associationView) {
+                if (this.conceptView) {
                     console.log('[MemoEcho] Refreshing associations after batch apply...');
-                    await this.associationView.refreshAssociations({ scan: true });
+                    await this.conceptView.refreshAssociations({ scan: true });
                     console.log('[MemoEcho] Associations refreshed successfully');
                 }
 
@@ -640,14 +634,8 @@ export default class MemoEchoPlugin extends Plugin {
         });
 
         // Listen for single concept apply events (no full refresh)
-        window.addEventListener('memo-echo:single-concept-apply', async (event: Event) => {
-            const { group } = (event as CustomEvent<{
-                group: {
-                    notePath: string;
-                    noteTitle: string;
-                    concepts: ExtractedConceptWithMatch[];
-                };
-            }>).detail;
+        window.addEventListener('memo-echo:single-concept-apply', async (event) => {
+            const { group } = event.detail;
 
             console.log('[MemoEcho] Single concept apply requested for', group.notePath);
 
@@ -679,7 +667,7 @@ export default class MemoEchoPlugin extends Plugin {
         });
 
         // Listen for concept skip events
-        window.addEventListener('memo-echo:concepts-skip', (_event: Event) => {
+        window.addEventListener('memo-echo:concepts-skip', () => {
             console.log('[MemoEcho] Concept extraction skipped by user');
             delete (this as any).pendingConceptFile;
         });
@@ -703,8 +691,8 @@ export default class MemoEchoPlugin extends Plugin {
             debounceMs: 1000,
             onParagraphComplete: async (event) => {
                 // Update recommendations in unified search view
-                if (this.unifiedSearchView) {
-                    await this.unifiedSearchView.updateRecommendations(event.content);
+                if (this.indexSearchView) {
+                    await this.indexSearchView.updateRecommendations(event.content);
                 }
             },
         });

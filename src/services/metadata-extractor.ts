@@ -3,31 +3,23 @@
  * Extracts summary, tags, and category from text content
  */
 
-import type { ExtractedMetadata, MetadataExtractorConfig } from '@core/types/extraction';
+import { EMPTY_EXTRACTED_METADATA, type ExtractedMetadata, type MetadataExtractorConfig } from '@core/types/extraction';
 import { CATEGORY_KEYWORDS, VALID_CATEGORIES, DEFAULT_CATEGORY, METADATA_CONSTRAINTS } from '@core/constants';
+import { BaseModelConfig } from '@core/types/setting';
 
 export type { ExtractedMetadata, MetadataExtractorConfig };
 
 export class MetadataExtractor {
-    private config: MetadataExtractorConfig;
+    private config: BaseModelConfig;
 
-    constructor(config?: Partial<MetadataExtractorConfig>) {
-        this.config = {
-            enableAi: true,
-            provider: 'ollama',
-            ollamaUrl: 'http://localhost:11434',
-            ollamaModel: 'llama3.2:3b',
-            openaiUrl: 'https://api.openai.com/v1',
-            openaiModel: 'gpt-3.5-turbo',
-            openaiApiKey: '',
-            ...config,
-        };
+    constructor(config: BaseModelConfig) {
+        this.config = config
     }
 
     /**
      * Update configuration dynamically
      */
-    public updateConfig(config: Partial<MetadataExtractorConfig>) {
+    public updateConfig(config: Partial<BaseModelConfig>) {
         this.config = { ...this.config, ...config };
     }
 
@@ -37,18 +29,7 @@ export class MetadataExtractor {
     async extract(content: string): Promise<ExtractedMetadata> {
         // Handle empty content
         if (!content || content.trim().length === 0) {
-            return {
-                summary: '',
-                tags: [],
-                category: '技术笔记',
-                concepts: [],
-                thinking_point: '',
-            };
-        }
-
-        // If AI is disabled, skip directly to rules
-        if (!this.config.enableAi) {
-            return this.extractWithRules(content);
+            return EMPTY_EXTRACTED_METADATA;
         }
 
         try {
@@ -58,17 +39,16 @@ export class MetadataExtractor {
                 return await this.extractWithOllama(content);
             }
         } catch (error) {
-            console.warn(`${this.config.provider} extraction failed, falling back to rules:`, error);
-            // Fallback to rule-based extraction
-            return this.extractWithRules(content);
+            console.warn(`${this.config.provider} extraction failed`, error);
+            return EMPTY_EXTRACTED_METADATA
         }
     }
 
     private async extractWithOllama(content: string): Promise<ExtractedMetadata> {
         const prompt = this.buildPrompt(content);
         // Use configured URL or default
-        const url = this.config.ollamaUrl || 'http://localhost:11434';
-        const model = this.config.ollamaModel || 'llama3.2:3b';
+        const url = this.config.baseUrl || 'http://localhost:11434';
+        const model = this.config.model || 'llama3:4b';
 
         const response = await fetch(`${url}/api/generate`, {
             method: 'POST',
@@ -96,9 +76,9 @@ export class MetadataExtractor {
 
     private async extractWithOpenAI(content: string): Promise<ExtractedMetadata> {
         const prompt = this.buildPrompt(content);
-        const url = this.config.openaiUrl || 'https://api.openai.com/v1';
-        const model = this.config.openaiModel || 'gpt-3.5-turbo';
-        const apiKey = this.config.openaiApiKey || '';
+        const url = this.config.baseUrl || 'https://api.openai.com/v1';
+        const model = this.config.model || 'gpt-5-turbo';
+        const apiKey = this.config.apiKey || '';
 
         const response = await fetch(`${url}/chat/completions`, {
             method: 'POST',
@@ -140,15 +120,6 @@ export class MetadataExtractor {
             concepts: this.normalizeTags(result.concepts || []), // Reuse tag normalization for concepts
             thinking_point: result.thinking_point || '',
         };
-    }
-
-    // Keep helper methods (rule-based)
-    extractWithRules(content: string): ExtractedMetadata {
-        const summary = this.extractSummary(content);
-        const tags = this.extractKeywords(content);
-        const category = this.inferCategory(content);
-
-        return { summary, tags, category, concepts: [], thinking_point: '' };
     }
 
     // ... (private buildPrompt, extractSummary, etc. - assume they are preserved if I use correct ranges OR I must include them if I replace whole class)
@@ -193,49 +164,6 @@ ${truncatedContent}
 - category: 从以下选项中选择：技术笔记、生活日记、读书笔记、想法灵感、工作记录
 
 只返回 JSON，不要其他内容。`;
-    }
-
-    private extractSummary(content: string): string {
-        const headerMatch = content.match(/^#+\s+(.+)$/m);
-        if (headerMatch) return headerMatch[1].trim();
-        const firstSentence = content.replace(/^#+\s+/gm, '').trim().split(/[。！？.!?]/)[0];
-        return firstSentence.substring(0, 100);
-    }
-
-    private extractKeywords(content: string): string[] {
-        const cleanContent = content.replace(/^#+\s+/gm, '').replace(/[*_`]/g, '').toLowerCase();
-        const words = cleanContent.split(/\s+/);
-        const wordCount = new Map<string, number>();
-        const stopWords = new Set([
-            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-            'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
-            'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-            'would', 'should', 'could', 'may', 'might', 'must', 'can',
-            '的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一',
-            '我', '你', '他', '她', '它', '们', '这', '那', '之', '与', '及',
-        ]);
-        for (const word of words) {
-            if (word.length > 2 && !stopWords.has(word)) {
-                wordCount.set(word, (wordCount.get(word) || 0) + 1);
-            }
-        }
-        return Array.from(wordCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([word]) => word);
-    }
-
-    private inferCategory(content: string): string {
-        const lowerContent = content.toLowerCase();
-        const counts = {
-            tech: CATEGORY_KEYWORDS.tech.filter(kw => lowerContent.includes(kw)).length,
-            diary: CATEGORY_KEYWORDS.diary.filter(kw => lowerContent.includes(kw)).length,
-            book: CATEGORY_KEYWORDS.book.filter(kw => lowerContent.includes(kw)).length,
-            idea: CATEGORY_KEYWORDS.idea.filter(kw => lowerContent.includes(kw)).length,
-        };
-        const max = Math.max(counts.tech, counts.diary, counts.book, counts.idea);
-        if (max === 0 || counts.tech === max) return DEFAULT_CATEGORY;
-        if (counts.diary === max) return '生活日记';
-        if (counts.book === max) return '读书笔记';
-        if (counts.idea === max) return '想法灵感';
-        return '工作记录';
     }
 
     private normalizeTags(tags: string[]): string[] {

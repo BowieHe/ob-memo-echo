@@ -2,8 +2,7 @@
  * Settings Tab - Refactored with indexing features
  */
 
-import { App, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
-import type { ConceptCountRule } from '@core/types/concept';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { buildAssociationExport } from '../services/association-exporter';
 import type MemoEchoPlugin from '../main';
 import {
@@ -31,20 +30,15 @@ export interface MemoEchoSettings {
     qdrantCollection: string;
 
     // Concept extraction configs (使用配置对象)
+    enableConceptExtraction: boolean;
     conceptExtraction: ConceptExtractionConfig;
     conceptFE: ConceptFEConfig;
     conceptSkip: ConceptSkipConfig;
-
-    // Other concept settings
-    enableConceptExtraction: boolean;
-    conceptCountRules: ConceptCountRule[];
 
     // Association config (使用配置对象)
     association: AssociationConfig;
     associationIgnoredAssociations: string[];
     associationDeletedConcepts: Record<string, string[]>;
-
-    debugLogging: boolean;
 }
 
 export const DEFAULT_SETTINGS: MemoEchoSettings = {
@@ -63,19 +57,12 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
 
     // Other concept settings
     enableConceptExtraction: true,
-    conceptCountRules: [
-        { minChars: 0, maxChars: 199, maxConcepts: 1 },
-        { minChars: 200, maxChars: 499, maxConcepts: 2 },
-        { minChars: 500, maxChars: 999, maxConcepts: 3 },
-        { minChars: 1000, maxChars: Infinity, maxConcepts: 4 },
-    ],
 
     // Association config
     association: DEFAULT_ASSOCIATION_CONFIG,
     associationIgnoredAssociations: [],
     associationDeletedConcepts: {},
 
-    debugLogging: true,
 };
 
 export class MemoEchoSettingTab extends PluginSettingTab {
@@ -142,23 +129,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         this.addServiceStatusSection(group);
         this.addQdrantSection(group);
         this.addEmbeddingSection(group);
-        this.addDebugSection(group);
-    }
-
-    private addDebugSection(containerEl: HTMLElement): void {
-        containerEl.createEl('h4', { text: '调试' });
-
-        new Setting(containerEl)
-            .setName('启用调试日志')
-            .setDesc('输出概念提取与匹配的中间日志')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.debugLogging)
-                .onChange(async (value) => {
-                    const result = await this.plugin.settingsManager.updateDebugLogging(value);
-                    if (!result.success) {
-                        new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
-                    }
-                }));
     }
 
     private addIndexingSection(containerEl: HTMLElement): void {
