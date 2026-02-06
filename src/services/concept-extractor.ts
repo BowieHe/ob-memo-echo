@@ -5,16 +5,14 @@
 
 import type { ConceptExtractionConfig, DetailedConceptExtraction, ExtractedConcepts, ExtractedConceptDetail } from '@core/types/extraction';
 import { BaseModelConfig } from '@core/types/setting';
-import type { Logger } from '@utils/logger';
 
 export type { ConceptExtractionConfig, DetailedConceptExtraction, ExtractedConcepts, ExtractedConceptDetail };
 
 export class ConceptExtractor {
     private config: ConceptExtractionConfig;
-    private logger?: Logger;
     private getLlmConfig: () => BaseModelConfig;
 
-    constructor(getLlmConfig: () => BaseModelConfig, config: ConceptExtractionConfig, logger?: Logger) {
+    constructor(getLlmConfig: () => BaseModelConfig, config: ConceptExtractionConfig) {
         this.config = {
             maxConcepts: 5,
             focusOnAbstractConcepts: true,
@@ -23,7 +21,6 @@ export class ConceptExtractor {
             ...config,
         };
         this.getLlmConfig = getLlmConfig;
-        this.logger = logger;
     }
 
     /**
@@ -48,10 +45,6 @@ export class ConceptExtractor {
             console.warn(`Concept extraction failed, falling back to rules:`, error);
             return this.extractWithRules(content, title);
         }
-    }
-
-    setLogger(logger?: Logger): void {
-        this.logger = logger;
     }
 
     async extractDetailed(
@@ -85,7 +78,7 @@ export class ConceptExtractor {
     ): Promise<ExtractedConcepts> {
         const prompt = this.buildPrompt(content, title, options);
         const raw = await this.requestOllama(prompt);
-        this.logger?.debug('Ollama concept RAW response received', {
+        console.debug('Ollama concept RAW response received', {
             responseLength: raw.length,
             responseSample: raw.slice(0, 400),
             fullResponse: raw,  // Log full response for debugging
@@ -111,7 +104,7 @@ export class ConceptExtractor {
         const prompt = this.buildPrompt(content, title, options);
         const systemPrompt = this.buildSystemPrompt();
         const raw = await this.requestOpenAI(prompt, systemPrompt);
-        this.logger?.debug('OpenAI concept response received', {
+        console.debug('OpenAI concept response received', {
             responseLength: raw.length,
             responseSample: raw.slice(0, 400),
         });
@@ -130,16 +123,16 @@ export class ConceptExtractor {
         title?: string,
         options?: { existingConcepts?: string[]; maxConcepts?: number }
     ): Promise<DetailedConceptExtraction> {
-        this.logger?.debug('Starting Ollama detailed extraction', { title });
+        console.debug('Starting Ollama detailed extraction', { title });
         const prompt = this.buildPrompt(content, title, options);
-        this.logger?.debug('Prompt built, sending to Ollama', { promptLength: prompt.length });
+        console.debug('Prompt built, sending to Ollama', { promptLength: prompt.length });
         const raw = await this.requestOllama(prompt);
-        this.logger?.debug('Ollama detailed concept response received', {
+        console.debug('Ollama detailed concept response received', {
             responseLength: raw.length,
             responseSample: raw.slice(0, 400),
         });
         const parsed = this.parseDetailedResponse(raw);
-        this.logger?.debug('Parsed detailed response', { conceptCount: parsed.concepts.length });
+        console.debug('Parsed detailed response', { conceptCount: parsed.concepts.length });
         return parsed;
     }
 
@@ -151,7 +144,7 @@ export class ConceptExtractor {
         const prompt = this.buildPrompt(content, title, options);
         const systemPrompt = this.buildSystemPrompt();
         const raw = await this.requestOpenAI(prompt, systemPrompt);
-        this.logger?.debug('OpenAI detailed concept response received', {
+        console.debug('OpenAI detailed concept response received', {
             responseLength: raw.length,
             responseSample: raw.slice(0, 400),
         });
@@ -352,7 +345,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
 
     private async requestOllama(prompt: string): Promise<string> {
         const llmConfig = this.getLlmConfig();
-        this.logger?.debug('Sending Ollama request', {
+        console.debug('Sending Ollama request', {
             url: llmConfig.baseUrl,
             model: llmConfig.model,
             promptLength: prompt.length,
@@ -385,12 +378,12 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
             }
 
             const data = await response.json();
-            this.logger?.debug('Ollama response received', {
+            console.debug('Ollama response received', {
                 responseLength: data.response?.length || 0,
             });
             return data.response;
         } catch (error) {
-            this.logger?.error('Ollama request error', {
+            console.error('Ollama request error', {
                 error: String(error),
                 message: error instanceof Error ? error.message : String(error),
             });
@@ -461,7 +454,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
                 };
             }
         } catch (error) {
-            this.logger?.warn('Failed to parse concept extraction response', {
+            console.warn('Failed to parse concept extraction response', {
                 error: String(error),
                 responseSample: response.slice(0, 400),
             });
@@ -488,7 +481,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
                 skipReason: parsed.skipReason ?? null,
             };
         } catch (error) {
-            this.logger?.warn('Failed to parse detailed concept extraction response', {
+            console.warn('Failed to parse detailed concept extraction response', {
                 error: String(error),
                 responseSample: response.slice(0, 400),
             });
@@ -531,7 +524,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
                 // Remove trailing commas
                 .replace(/,\s*([}\]])/g, '$1');
 
-            this.logger?.debug('Attempting sanitized JSON parse', {
+            console.debug('Attempting sanitized JSON parse', {
                 candidateLength: sanitized.length,
                 candidateSample: sanitized.slice(0, 400),
             });
@@ -540,7 +533,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
                 return JSON.parse(sanitized);
             } catch (retryError) {
                 // As a last resort, try to extract partial concepts by regex
-                this.logger?.warn('Failed to parse even after sanitization, trying partial extraction', {
+                console.warn('Failed to parse even after sanitization, trying partial extraction', {
                     error: String(retryError),
                 });
                 return this.extractPartialJson(candidate);
@@ -568,7 +561,7 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
         }
 
         if (concepts.length > 0) {
-            this.logger?.info('Extracted partial concepts using regex', {
+            console.info('Extracted partial concepts using regex', {
                 count: concepts.length,
             });
             return { concepts };

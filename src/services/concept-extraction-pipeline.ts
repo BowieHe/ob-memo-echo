@@ -1,7 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import type { ConceptExtractionSettings, ConceptExtractionResult, ConfirmedConcept, ExtractedConceptWithMatch } from '@core/types/concept';
 import type { DetailedConceptExtraction } from '@core/types/extraction';
-import type { Logger } from '@utils/logger';
 import { ConceptMatcher } from './concept-matcher';
 import { NoteTypeDetector } from './note-type-detector';
 import { ConceptDictionaryStore } from './concept-dictionary-store';
@@ -16,14 +15,12 @@ export class ConceptExtractionPipeline {
     private settings: ConceptExtractionSettings;
     private detector: NoteTypeDetector;
     private dictionaryStore: ConceptDictionaryStore;
-    private logger?: Logger;
 
     constructor(
         app: App,
         extractor: ConceptExtractor,
         frontmatterService: FrontmatterService,
-        settings: ConceptExtractionSettings,
-        logger?: Logger
+        settings: ConceptExtractionSettings
     ) {
         this.app = app;
         this.extractor = extractor;
@@ -31,7 +28,6 @@ export class ConceptExtractionPipeline {
         this.settings = settings;
         this.detector = new NoteTypeDetector(settings.skipRules);
         this.dictionaryStore = new ConceptDictionaryStore(app, settings.skipRules.conceptDictionaryPath);
-        this.logger = logger;
     }
 
     updateSettings(settings: ConceptExtractionSettings): void {
@@ -40,17 +36,13 @@ export class ConceptExtractionPipeline {
         this.dictionaryStore = new ConceptDictionaryStore(this.app, settings.skipRules.conceptDictionaryPath);
     }
 
-    setLogger(logger?: Logger): void {
-        this.logger = logger;
-    }
-
     async extract(note: { path: string; title: string; content: string; tags?: string[] }): Promise<ConceptExtractionResult> {
         if (!this.settings.enableConceptExtraction) {
             return { skipped: true, reason: 'Concept extraction disabled' };
         }
 
         const detection = this.detector.detect({ path: note.path, content: note.content, tags: note.tags });
-        this.logger?.debug('Note type detection', {
+        console.debug('Note type detection', {
             noteType: detection.type,
             shouldSkip: detection.shouldSkip,
             reason: detection.reason,
@@ -60,19 +52,19 @@ export class ConceptExtractionPipeline {
         }
 
         const dictionary = await this.dictionaryStore.load();
-        this.logger?.debug('Loaded concept dictionary', {
+        console.debug('Loaded concept dictionary', {
             conceptCount: Object.keys(dictionary.concepts).length,
         });
         const matcher = new ConceptMatcher(dictionary);
         const maxConcepts = getMaxConceptsForLength(this.getTextLength(note.content), this.settings.conceptCountRules);
-        this.logger?.debug('Concept extraction parameters', { maxConcepts });
+        console.debug('Concept extraction parameters', { maxConcepts });
 
         const detailed = await this.extractor.extractDetailed(note.content, note.title, {
             existingConcepts: Object.keys(dictionary.concepts),
             maxConcepts,
         });
 
-        this.logger?.debug('Detailed concept extraction result', {
+        console.debug('Detailed concept extraction result', {
             conceptCount: detailed.concepts.length,
             noteType: detailed.noteType,
             skipReason: detailed.skipReason,

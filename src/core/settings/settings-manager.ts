@@ -11,7 +11,6 @@ import { ConceptExtractionSettingsHandler } from './settings-handlers';
 import { AssociationSettingsHandler } from './settings-handlers';
 import { ConceptFESettingsHandler } from './settings-handlers';
 import { ConceptSkipSettingsHandler } from './settings-handlers';
-import { DebugSettingsHandler } from './settings-handlers';
 import type { BaseModelConfig } from '../types/setting';
 import type { ConceptExtractionConfig } from '../types/setting';
 import type { ConceptFEConfig } from '../types/setting';
@@ -58,7 +57,6 @@ export class SettingsManager {
         this.handlers.set('association', new AssociationSettingsHandler(serviceUpdaters.uiAssociation));
         this.handlers.set('conceptFE', new ConceptFESettingsHandler(serviceUpdaters.conceptFE));
         this.handlers.set('conceptSkip', new ConceptSkipSettingsHandler(serviceUpdaters.conceptSkip));
-        this.handlers.set('debug', new DebugSettingsHandler(serviceUpdaters.logger, serviceUpdaters.conceptExtractionSettings));
     }
 
     /**
@@ -109,13 +107,9 @@ export class SettingsManager {
      * Update debug logging setting
      */
     async updateDebugLogging(enabled: boolean): Promise<SettingsUpdateResult> {
-        const result = await this.updateGroup('debug', { debugLogging: this.settings.debugLogging }, { debugLogging: enabled });
-        // For debug settings, we need to manually update the actual settings object
-        // since we pass a wrapper object, not the actual settings reference
-        if (result.success) {
-            this.settings.debugLogging = enabled;
-        }
-        return result;
+        this.settings.debugLogging = enabled;
+        await this.saveSettings();
+        return { success: true };
     }
 
     /**
@@ -167,3 +161,4 @@ export class SettingsManager {
         return JSON.parse(JSON.stringify(this.settings));
     }
 }
+ 

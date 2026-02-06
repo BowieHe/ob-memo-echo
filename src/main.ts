@@ -16,40 +16,39 @@ import { ConceptExtractionPipeline } from './services/concept-extraction-pipelin
 import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
 import type { ConceptExtractionSettings, ConfirmedConcept, ExtractedConceptWithMatch } from './core/types/concept';
-import { createLogger, type Logger } from './utils/logger';
 import { SettingsManager } from './core/settings/settings-manager';
+import { getErrorMessage } from '@utils/error';
 
 export default class MemoEchoPlugin extends Plugin {
     private unifiedSearchView: UnifiedSearchView | null = null;
     private associationView: AssociationView | null = null;
 
     // Settings
-    settings: MemoEchoSettings;
+    settings!: MemoEchoSettings;
 
     // Batch processing state
     private isBatchProcessing = false;
     private shouldStopBatch = false;
 
     // Services
-    embeddingService: EmbeddingService;
-    vectorBackend: VectorBackend;
-    chunker: Chunker;
-    metadataExtractor: MetadataExtractor;
-    indexManager: VectorIndexManager;
+    embeddingService!: EmbeddingService;
+    vectorBackend!: VectorBackend;
+    chunker!: Chunker;
+    metadataExtractor!: MetadataExtractor;
+    indexManager!: VectorIndexManager;
     paragraphDetector: ParagraphDetector | null = null;
 
     // v0.5.0 services
-    frontmatterService: FrontmatterService;
-    conceptExtractor: ConceptExtractor;
-    conceptExtractionPipeline: ConceptExtractionPipeline;
+    frontmatterService!: FrontmatterService;
+    conceptExtractor!: ConceptExtractor;
+    conceptExtractionPipeline!: ConceptExtractionPipeline;
 
     // v0.6.0 services
-    associationEngine: SimpleAssociationEngine;
-    associationPreferences: AssociationPreferences;
-    logger: Logger;
+    associationEngine!: SimpleAssociationEngine;
+    associationPreferences!: AssociationPreferences;
 
     // Settings manager
-    settingsManager: SettingsManager;
+    settingsManager!: SettingsManager;
 
     async onload() {
         console.log('Loading Memo Echo Plugin v0.6.0');
@@ -92,13 +91,10 @@ export default class MemoEchoPlugin extends Plugin {
         });
         console.log('🏷️ Metadata extractor initialized');
 
-        this.logger = createLogger(this.settings.debugLogging);
-
         // v0.5.0: Initialize concept extractor
         this.conceptExtractor = new ConceptExtractor(
             () => this.settings.llmConfig,
-            this.settings.conceptExtraction,
-            this.logger
+            this.settings.conceptExtraction
         );
         console.log('💡 Concept extractor initialized (v0.6.0)');
 
@@ -142,8 +138,7 @@ export default class MemoEchoPlugin extends Plugin {
             this.app,
             this.conceptExtractor,
             this.frontmatterService,
-            this.getConceptExtractionSettings(),
-            this.logger
+            this.getConceptExtractionSettings()
         );
 
         // Initialize SettingsManager with service updaters
@@ -151,16 +146,39 @@ export default class MemoEchoPlugin extends Plugin {
             this.settings,
             () => this.saveSettings(),
             {
-                embedding: (config) => this.embeddingService.updateConfig(config),
-                llm: (config) => this.metadataExtractor?.updateConfig(config),
+                // Adapter: convert BaseModelConfig (baseUrl, model, apiKey) to EmbeddingConfig
+                embedding: (config) => {
+                    const embeddingConfig: Partial<import('./services/embedding-service').EmbeddingConfig> = {
+                        provider: config.provider as 'ollama' | 'openai' | 'local',
+                    };
+                    if (config.provider === 'ollama') {
+                        if (config.baseUrl) embeddingConfig.ollamaUrl = config.baseUrl;
+                        if (config.model) embeddingConfig.ollamaModel = config.model;
+                    } else if (config.provider === 'openai') {
+                        if (config.apiKey) embeddingConfig.openaiApiKey = config.apiKey;
+                        if (config.model) embeddingConfig.openaiModel = config.model;
+                    }
+                    this.embeddingService.updateConfig(embeddingConfig);
+                },
+                // Adapter: convert BaseModelConfig (baseUrl, model, apiKey) to MetadataExtractorConfig
+                llm: (config) => {
+                    const llmConfig: Partial<import('./services/metadata-extractor').MetadataExtractorConfig> = {
+                        provider: config.provider as 'ollama' | 'openai',
+                    };
+                    if (config.provider === 'ollama') {
+                        if (config.baseUrl) llmConfig.ollamaUrl = config.baseUrl;
+                        if (config.model) llmConfig.ollamaModel = config.model;
+                    } else if (config.provider === 'openai') {
+                        if (config.baseUrl) llmConfig.openaiUrl = config.baseUrl;
+                        if (config.model) llmConfig.openaiModel = config.model;
+                        if (config.apiKey) llmConfig.openaiApiKey = config.apiKey;
+                    }
+                    this.metadataExtractor?.updateConfig(llmConfig);
+                },
                 conceptExtraction: (config) => this.conceptExtractor?.updateConfig(config),
                 association: (config) => this.associationEngine?.updateConfig(config),
                 uiAssociation: (config) => {
                     this.settings.association = { ...this.settings.association, ...config };
-                },
-                logger: (enabled) => {
-                    this.settings.debugLogging = enabled;
-                    this.updateLogger();
                 },
                 conceptExtractionSettings: () => this.updateConceptExtractionSettings(),
                 conceptFE: (config) => {
@@ -317,12 +335,6 @@ export default class MemoEchoPlugin extends Plugin {
         this.conceptExtractionPipeline.updateSettings(this.getConceptExtractionSettings());
     }
 
-    updateLogger(): void {
-        this.logger = createLogger(this.settings.debugLogging);
-        this.conceptExtractor.setLogger(this.logger);
-        this.conceptExtractionPipeline.setLogger(this.logger);
-    }
-
     // v0.6.0: Activate association view
     async activateAssociationView() {
         const { workspace } = this.app;
@@ -390,7 +402,7 @@ export default class MemoEchoPlugin extends Plugin {
             (this as any).pendingConceptFile = activeFile;
         } catch (error) {
             console.error('[MemoEcho] Failed to extract concepts from current file:', error);
-            new Notice(`❌ 提取概念失败: ${error.message}`);
+            new Notice(`❌ 提取概念失败: ${getErrorMessage(error)}`);
         }
     };
 
@@ -533,7 +545,7 @@ export default class MemoEchoPlugin extends Plugin {
             new Notice(`✅ 批量提取完成: 已处理 ${processedCount} 个文件，提取 ${conceptCount} 个概念`);
         } catch (error) {
             console.error('[MemoEcho] Failed to batch extract concepts:', error);
-            new Notice(`❌ 批量提取失败: ${error.message}`);
+            new Notice(`❌ 批量提取失败: ${getErrorMessage(error)}`);
         } finally {
             this.isBatchProcessing = false;
             this.shouldStopBatch = false;
@@ -555,8 +567,8 @@ export default class MemoEchoPlugin extends Plugin {
      */
     private setupConceptEventListeners() {
         // Listen for concept apply events from sidebar
-        window.addEventListener('memo-echo:concepts-apply', async (event: CustomEvent<ConfirmedConcept[]>) => {
-            const concepts = event.detail;
+        window.addEventListener('memo-echo:concepts-apply', async (event: Event) => {
+            const concepts = (event as CustomEvent<ConfirmedConcept[]>).detail;
             const pendingFile = (this as any).pendingConceptFile as TFile | undefined;
 
             if (!pendingFile) {
@@ -569,20 +581,21 @@ export default class MemoEchoPlugin extends Plugin {
                 console.log('[MemoEcho] Concepts applied:', concepts.length);
             } catch (error) {
                 console.error('[MemoEcho] Failed to apply concepts:', error);
+                new Notice(`❌ 提取概念失败: ${getErrorMessage(error)}`);
             } finally {
                 delete (this as any).pendingConceptFile;
             }
         });
 
         // Listen for batch concepts apply events
-        window.addEventListener('memo-echo:batch-concepts-apply', async (event: CustomEvent<{
-            groups: Array<{
-                notePath: string;
-                noteTitle: string;
-                concepts: ExtractedConceptWithMatch[];
-            }>;
-        }>) => {
-            const { groups } = event.detail;
+        window.addEventListener('memo-echo:batch-concepts-apply', async (event: Event) => {
+            const { groups } = (event as CustomEvent<{
+                groups: Array<{
+                    notePath: string;
+                    noteTitle: string;
+                    concepts: ExtractedConceptWithMatch[];
+                }>;
+            }>).detail;
 
             console.log('[MemoEcho] Batch concepts apply requested for', groups.length, 'files');
 
@@ -622,19 +635,19 @@ export default class MemoEchoPlugin extends Plugin {
                 console.log('[MemoEcho] Batch concepts applied:', appliedCount, 'files,', conceptCount, 'concepts');
             } catch (error) {
                 console.error('[MemoEcho] Failed to apply batch concepts:', error);
-                new Notice(`❌ 批量应用失败: ${error.message}`);
+                new Notice(`❌ 批量应用失败: ${getErrorMessage(error)}`);
             }
         });
 
         // Listen for single concept apply events (no full refresh)
-        window.addEventListener('memo-echo:single-concept-apply', async (event: CustomEvent<{
-            group: {
-                notePath: string;
-                noteTitle: string;
-                concepts: ExtractedConceptWithMatch[];
-            };
-        }>) => {
-            const { group } = event.detail;
+        window.addEventListener('memo-echo:single-concept-apply', async (event: Event) => {
+            const { group } = (event as CustomEvent<{
+                group: {
+                    notePath: string;
+                    noteTitle: string;
+                    concepts: ExtractedConceptWithMatch[];
+                };
+            }>).detail;
 
             console.log('[MemoEcho] Single concept apply requested for', group.notePath);
 
@@ -661,12 +674,12 @@ export default class MemoEchoPlugin extends Plugin {
                 console.log('[MemoEcho] Single concept applied successfully');
             } catch (error) {
                 console.error('[MemoEcho] Failed to apply single concept:', error);
-                new Notice(`❌ 应用失败: ${error.message}`);
+                new Notice(`❌ 应用失败: ${getErrorMessage(error)}`);
             }
         });
 
         // Listen for concept skip events
-        window.addEventListener('memo-echo:concepts-skip', () => {
+        window.addEventListener('memo-echo:concepts-skip', (_event: Event) => {
             console.log('[MemoEcho] Concept extraction skipped by user');
             delete (this as any).pendingConceptFile;
         });

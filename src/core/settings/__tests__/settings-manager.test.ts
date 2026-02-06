@@ -53,7 +53,6 @@ const mockServiceUpdaters: ServiceUpdaters = {
     llm: vi.fn(),
     conceptExtraction: vi.fn(),
     association: vi.fn(),
-    logger: vi.fn(),
     conceptExtractionSettings: vi.fn(),
     conceptFE: vi.fn(),
     conceptSkip: vi.fn(),
@@ -257,7 +256,6 @@ describe('SettingsManager', () => {
             expect(result.success).toBe(true);
             expect(mockSettings.debugLogging).toBe(false);
             expect(mockSaveSettings).toHaveBeenCalled();
-            expect(mockServiceUpdaters.logger).toHaveBeenCalledWith(false);
         });
     });
 
