@@ -17,6 +17,7 @@ import { SimpleAssociationEngine } from './services/association-engine';
 import { AssociationPreferences } from './services/association-preferences';
 import type { ConceptExtractionSettings, ConfirmedConcept, ExtractedConceptWithMatch } from './core/types/concept';
 import { createLogger, type Logger } from './utils/logger';
+import { SettingsManager } from './core/settings/settings-manager';
 
 export default class MemoEchoPlugin extends Plugin {
     private unifiedSearchView: UnifiedSearchView | null = null;
@@ -46,6 +47,9 @@ export default class MemoEchoPlugin extends Plugin {
     associationEngine: SimpleAssociationEngine;
     associationPreferences: AssociationPreferences;
     logger: Logger;
+
+    // Settings manager
+    settingsManager: SettingsManager;
 
     async onload() {
         console.log('Loading Memo Echo Plugin v0.6.0');
@@ -141,6 +145,33 @@ export default class MemoEchoPlugin extends Plugin {
             this.getConceptExtractionSettings(),
             this.logger
         );
+
+        // Initialize SettingsManager with service updaters
+        this.settingsManager = new SettingsManager(
+            this.settings,
+            () => this.saveSettings(),
+            {
+                embedding: (config) => this.embeddingService.updateConfig(config),
+                llm: (config) => this.metadataExtractor?.updateConfig(config),
+                conceptExtraction: (config) => this.conceptExtractor?.updateConfig(config),
+                association: (config) => this.associationEngine?.updateConfig(config),
+                uiAssociation: (config) => {
+                    this.settings.association = { ...this.settings.association, ...config };
+                },
+                logger: (enabled) => {
+                    this.settings.debugLogging = enabled;
+                    this.updateLogger();
+                },
+                conceptExtractionSettings: () => this.updateConceptExtractionSettings(),
+                conceptFE: (config) => {
+                    this.settings.conceptFE = { ...this.settings.conceptFE, ...config };
+                },
+                conceptSkip: (config) => {
+                    this.settings.conceptSkip = { ...this.settings.conceptSkip, ...config };
+                },
+            }
+        );
+        console.log('⚙️ Settings manager initialized');
 
         // Register the unified search view (combines search + recommendations)
         this.registerView(

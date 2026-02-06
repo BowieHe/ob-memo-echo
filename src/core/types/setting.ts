@@ -73,3 +73,16 @@ export const DEFAULT_ASSOCIATION_CONFIG: AssociationConfig = {
     associationAutoAcceptConfidence: 0.9,
     associationAutoScanBatchSize: 50,
 };
+
+/**
+ * Union type of all settings config types for type-safe updates
+ * Used by SettingsManager to ensure type safety across all config types
+ * Note: Primitive settings (like debugLogging) are handled separately
+ */
+export type SettingsConfigType =
+    | BaseModelConfig
+    | ConceptExtractionConfig
+    | ConceptFEConfig
+    | ConceptSkipConfig
+    | AssociationConfig;
+

@@ -19,6 +19,7 @@ import {
     DEFAULT_CONCEPT_SKIP_CONFIG,
     DEFAULT_ASSOCIATION_CONFIG,
 } from '@core/types/setting';
+import { getErrorMessage } from '@utils/error';
 
 export interface MemoEchoSettings {
     // Model configs
@@ -100,6 +101,26 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         this.addDatabaseActionsSection(containerEl);
     }
 
+    /**
+     * Helper method to handle settings update results and show notices
+     */
+    private handleSettingsResult(
+        result: { success: boolean; errors?: Array<{ field: string; message: string }> },
+        successMessage?: string,
+        errorMessagePrefix = '更新失败'
+    ): boolean {
+        if (result.success) {
+            if (successMessage) {
+                new Notice(`✅ ${successMessage}`);
+            }
+            return true;
+        } else {
+            const errorMsg = result.errors?.[0]?.message || '未知错误';
+            new Notice(`❌ ${errorMessagePrefix}: ${errorMsg}`);
+            return false;
+        }
+    }
+
     private addOverviewSection(containerEl: HTMLElement): void {
         containerEl.createEl('h3', { text: '概览' });
 
@@ -133,9 +154,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.debugLogging)
                 .onChange(async (value) => {
-                    this.plugin.settings.debugLogging = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.updateLogger();
+                    const result = await this.plugin.settingsManager.updateDebugLogging(value);
+                    if (!result.success) {
+                        new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                    }
                 }));
     }
 
@@ -207,7 +229,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         } catch (error) {
             console.error('索引失败:', error);
-            new Notice(`❌ 索引失败: ${error.message}`);
+            new Notice(`❌ 索引失败: ${getErrorMessage(error)}`);
         } finally {
             this.isIndexing = false;
         }
@@ -273,7 +295,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         } catch (error) {
             console.error('同步失败:', error);
-            new Notice(`❌ 同步失败: ${error.message}`);
+            new Notice(`❌ 同步失败: ${getErrorMessage(error)}`);
         } finally {
             this.isIndexing = false;
         }
@@ -295,7 +317,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         const count = await this.plugin.vectorBackend.count();
                         new Notice(`✅ Qdrant 已连接 (${count} 个向量)`);
                     } catch (error) {
-                        new Notice(`❌ Qdrant 连接失败: ${error.message}`);
+                        new Notice(`❌ Qdrant 连接失败: ${getErrorMessage(error)}`);
                     }
                 }));
 
@@ -315,12 +337,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addOption('openai', 'OpenAI')
                 .setValue(config.provider)
                 .onChange(async (value) => {
-                    this.plugin.settings.embeddingConfig.provider = value as 'ollama' | 'openai';
-                    await this.plugin.saveSettings();
-                    this.plugin.embeddingService.updateConfig({ provider: value as 'ollama' | 'openai' });
-                    // Refresh to show/hide relevant fields
-                    this.display();
-                    new Notice(`✅ 已切换到 ${value} 提供商`);
+                    const result = await this.plugin.settingsManager.updateEmbedding({ provider: value as 'ollama' | 'openai' });
+                    if (this.handleSettingsResult(result, `已切换到 ${value} 提供商`)) {
+                        this.display();
+                    }
                 }));
 
         if (config.provider === 'ollama') {
@@ -332,9 +352,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('http://localhost:11434')
                     .setValue(config.baseUrl)
                     .onChange(async (value) => {
-                        this.plugin.settings.embeddingConfig.baseUrl = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.embeddingService.updateConfig({ ollamaUrl: value });
+                        const result = await this.plugin.settingsManager.updateEmbedding({ baseUrl: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             // Ollama Embedding Model dropdown
@@ -371,9 +392,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 dropdown
                     .setValue(config.model)
                     .onChange(async (value) => {
-                        this.plugin.settings.embeddingConfig.model = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.embeddingService.updateConfig({ ollamaModel: value });
+                        const result = await this.plugin.settingsManager.updateEmbedding({ model: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     });
             });
 
@@ -395,9 +417,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('sk-...')
                     .setValue(config.apiKey)
                     .onChange(async (value) => {
-                        this.plugin.settings.embeddingConfig.apiKey = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.embeddingService.updateConfig({ openaiApiKey: value });
+                        const result = await this.plugin.settingsManager.updateEmbedding({ apiKey: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             new Setting(containerEl)
@@ -406,9 +429,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('text-embedding-3-small')
                     .setValue(config.model)
                     .onChange(async (value) => {
-                        this.plugin.settings.embeddingConfig.model = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.embeddingService.updateConfig({ openaiModel: value });
+                        const result = await this.plugin.settingsManager.updateEmbedding({ model: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
         }
     }
@@ -417,26 +441,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         containerEl.createEl('h3', { text: 'AI 总结与标签' });
 
         const group = containerEl.createDiv('memo-echo-settings-group');
-
-        // // Toggle
-        // new Setting(group)
-        //     .setName('启用 AI 智能提取')
-        //     .setDesc('使用 LLM 模型自动生成文档总结、分类和标签。关闭将使用基于规则的快速提取。')
-        //     .addToggle(toggle => toggle
-        //         .setValue(this.plugin.settings.enableAiMetadata)
-        //         .onChange(async (value) => {
-        //             this.plugin.settings.enableAiMetadata = value;
-        //             await this.plugin.saveSettings();
-        //             if (this.plugin.metadataExtractor) {
-        //                 this.plugin.metadataExtractor.updateConfig({ enableAi: value });
-        //             }
-        //             // Refresh to show/hide detailed settings
-        //             this.display();
-        //         }));
-
-        // if (!this.plugin.settings.enableAiMetadata) {
-        //     return;
-        // }
 
         const config = this.plugin.settings.llmConfig;
 
@@ -449,13 +453,12 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addOption('openai', 'OpenAI (在线)')
                 .setValue(config.provider)
                 .onChange(async (value) => {
-                    const provider = value as 'ollama' | 'openai';
-                    this.plugin.settings.llmConfig.provider = provider;
-                    await this.plugin.saveSettings();
-                    if (this.plugin.metadataExtractor) {
-                        this.plugin.metadataExtractor.updateConfig({ provider });
+                    const result = await this.plugin.settingsManager.updateLlm({ provider: value as 'ollama' | 'openai' });
+                    if (result.success) {
+                        this.display();
+                    } else {
+                        new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                     }
-                    this.display();
                 }));
 
         // Ollama Generation Settings
@@ -467,13 +470,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('http://localhost:11434')
                     .setValue(config.baseUrl)
                     .onChange(async (value) => {
-                        this.plugin.settings.llmConfig.baseUrl = value;
-                        await this.plugin.saveSettings();
-                        if (this.plugin.metadataExtractor) {
-                            this.plugin.metadataExtractor.updateConfig({ ollamaUrl: value });
+                        const result = await this.plugin.settingsManager.updateLlm({ baseUrl: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                         }
-                        // We might want to refresh to reload models list if URL changed,
-                        // but let's leave it for manual refresh or next open to avoid flicker text input
                     }));
 
             const genModelSetting = new Setting(group)
@@ -486,14 +486,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     if (response.ok) {
                         const data = await response.json();
                         const models = data.models || [];
-                        // Filter likely generation models (exclude explicit embedding models)
-                        const genModels = models.filter((m: any) =>
-                            !m.name.toLowerCase().includes('embed') &&
-                            !m.name.toLowerCase().includes('bge')
-                        );
 
-                        if (genModels.length > 0) {
-                            genModels.forEach((model: any) => dropdown.addOption(model.name, model.name));
+                        if (models.length > 0) {
+                            models.forEach((model: any) => dropdown.addOption(model.name, model.name));
                         } else {
                             dropdown.addOption('', '(未找到生成模型)');
                             if (config.model) {
@@ -511,10 +506,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         if (value.toLowerCase().includes('embed')) {
                             new Notice('⚠️ 警告: 选择 Embedding 模型可能导致失败');
                         }
-                        this.plugin.settings.llmConfig.model = value;
-                        await this.plugin.saveSettings();
-                        if (this.plugin.metadataExtractor) {
-                            this.plugin.metadataExtractor.updateConfig({ ollamaModel: value });
+                        const result = await this.plugin.settingsManager.updateLlm({ model: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                         }
                     });
             });
@@ -533,10 +527,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('sk-...')
                     .setValue(config.apiKey)
                     .onChange(async (value) => {
-                        this.plugin.settings.llmConfig.apiKey = value;
-                        await this.plugin.saveSettings();
-                        if (this.plugin.metadataExtractor) {
-                            this.plugin.metadataExtractor.updateConfig({ openaiApiKey: value });
+                        const result = await this.plugin.settingsManager.updateLlm({ apiKey: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                         }
                     }));
 
@@ -547,10 +540,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('https://api.openai.com/v1')
                     .setValue(config.baseUrl)
                     .onChange(async (value) => {
-                        this.plugin.settings.llmConfig.baseUrl = value;
-                        await this.plugin.saveSettings();
-                        if (this.plugin.metadataExtractor) {
-                            this.plugin.metadataExtractor.updateConfig({ openaiUrl: value });
+                        const result = await this.plugin.settingsManager.updateLlm({ baseUrl: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                         }
                     }));
 
@@ -560,10 +552,9 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setValue(config.model)
                     .onChange(async (value) => {
-                        this.plugin.settings.llmConfig.model = value;
-                        await this.plugin.saveSettings();
-                        if (this.plugin.metadataExtractor) {
-                            this.plugin.metadataExtractor.updateConfig({ openaiModel: value });
+                        const result = await this.plugin.settingsManager.updateLlm({ model: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
                         }
                     }));
         }
@@ -621,10 +612,12 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.conceptFE.injectToFrontmatter)
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptFE.injectToFrontmatter = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.updateConceptExtractionSettings();
-                        this.display();
+                        const result = await this.plugin.settingsManager.updateConceptFE({ injectToFrontmatter: value });
+                        if (result.success) {
+                            this.display();
+                        } else {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             if (this.plugin.settings.conceptFE.injectToFrontmatter) {
@@ -634,25 +627,12 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .addToggle(toggle => toggle
                         .setValue(this.plugin.settings.conceptFE.autoCreateConceptPage)
                         .onChange(async (value) => {
-                            this.plugin.settings.conceptFE.autoCreateConceptPage = value;
-                            await this.plugin.saveSettings();
-                            this.plugin.updateConceptExtractionSettings();
+                            const result = await this.plugin.settingsManager.updateConceptFE({ autoCreateConceptPage: value });
+                            if (!result.success) {
+                                new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                            }
                         }));
             }
-
-            // new Setting(conceptGroup)
-            //     .setName('概念提取方式')
-            //     .setDesc('AI 或规则提取')
-            //     .addDropdown(dropdown => dropdown
-            //         .addOption('ollama', 'Ollama (推荐)')
-            //         .addOption('openai', 'OpenAI')
-            //         .addOption('rules', '规则提取 (无需 AI)')
-            //         .setValue(this.plugin.settings.conceptExtractionProvider)
-            //         .onChange(async (value: 'ollama' | 'openai' | 'rules') => {
-            //             this.plugin.settings.conceptExtractionProvider = value;
-            //             await this.plugin.saveSettings();
-            //             this.plugin.conceptExtractor.updateConfig({ provider: value });
-            //         }));
 
             new Setting(conceptGroup)
                 .setName('概念页前缀')
@@ -661,8 +641,11 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setPlaceholder('_me')
                     .setValue(this.plugin.settings.conceptFE.conceptPagePrefix)
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptFE.conceptPagePrefix = value || '_me';
-                        this.plugin.settings.conceptSkip.conceptDictionaryPath = `${this.plugin.settings.conceptFE.conceptPagePrefix}/_concept-dictionary.json`;
+                        const prefix = value || '_me';
+                        // Note: conceptPagePrefix update also affects conceptSkip.conceptDictionaryPath
+                        // This requires special handling since it modifies two settings groups
+                        this.plugin.settings.conceptFE.conceptPagePrefix = prefix;
+                        this.plugin.settings.conceptSkip.conceptDictionaryPath = `${prefix}/_concept-dictionary.json`;
                         await this.plugin.saveSettings();
                         this.plugin.updateConceptExtractionSettings();
                     }));
@@ -680,8 +663,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.conceptExtraction.focusOnAbstractConcepts)
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptExtraction.focusOnAbstractConcepts = value;
-                        await this.plugin.saveSettings();
+                        const result = await this.plugin.settingsManager.updateConceptExtraction({ focusOnAbstractConcepts: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             // Minimum concept confidence
@@ -693,9 +678,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.conceptExtraction.minConfidence)
                     .setDynamicTooltip()
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptExtraction.minConfidence = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.conceptExtractor.updateConfig({ minConfidence: value });
+                        const result = await this.plugin.settingsManager.updateConceptExtraction({ minConfidence: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             // Exclude generic concepts
@@ -707,9 +693,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.conceptExtraction.excludeGenericConcepts.join('\n'))
                     .onChange(async (value) => {
                         const excludeList = value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-                        this.plugin.settings.conceptExtraction.excludeGenericConcepts = excludeList;
-                        await this.plugin.saveSettings();
-                        this.plugin.conceptExtractor?.updateConfig({ excludeGenericConcepts: excludeList });
+                        const result = await this.plugin.settingsManager.updateConceptExtraction({ excludeGenericConcepts: excludeList });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             containerEl.createEl('h4', { text: '跳过规则' });
@@ -721,9 +708,11 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addTextArea(text => text
                     .setValue(this.plugin.settings.conceptSkip.skipPaths.join('\n'))
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptSkip.skipPaths = value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-                        await this.plugin.saveSettings();
-                        this.plugin.updateConceptExtractionSettings();
+                        const skipPaths = value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                        const result = await this.plugin.settingsManager.updateConceptSkip({ skipPaths });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             new Setting(skipGroup)
@@ -731,9 +720,11 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setValue(this.plugin.settings.conceptSkip.skipTags.join(', '))
                     .onChange(async (value) => {
-                        this.plugin.settings.conceptSkip.skipTags = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                        await this.plugin.saveSettings();
-                        this.plugin.updateConceptExtractionSettings();
+                        const skipTags = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        const result = await this.plugin.settingsManager.updateConceptSkip({ skipTags });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             new Setting(skipGroup)
@@ -743,9 +734,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         const parsed = Number(value);
                         if (!Number.isNaN(parsed)) {
-                            this.plugin.settings.conceptSkip.minTextLength = parsed;
-                            await this.plugin.saveSettings();
-                            this.plugin.updateConceptExtractionSettings();
+                            const result = await this.plugin.settingsManager.updateConceptSkip({ minTextLength: parsed });
+                            if (!result.success) {
+                                new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                            }
                         }
                     }));
 
@@ -767,7 +759,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                                 const result = await this.plugin.frontmatterService.clearAllMemoEchoFields();
                                 new Notice(`✅ 已清除 ${result.cleared} 个文件${result.failed > 0 ? `, ${result.failed} 个失败` : ''}`);
                             } catch (error) {
-                                new Notice(`❌ 清除失败: ${error.message}`);
+                                new Notice(`❌ 清除失败: ${getErrorMessage(error)}`);
                             }
                         }
                     }));
@@ -806,7 +798,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                             }
                             new Notice(`✅ 已清除 ${cleared} 个文件的概念`);
                         } catch (error) {
-                            new Notice(`❌ 清除失败: ${error.message}`);
+                            new Notice(`❌ 清除失败: ${getErrorMessage(error)}`);
                         }
                     }));
 
@@ -824,8 +816,10 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.association.associationAutoAccept)
                     .onChange(async (value) => {
-                        this.plugin.settings.association.associationAutoAccept = value;
-                        await this.plugin.saveSettings();
+                        const result = await this.plugin.settingsManager.updateAssociation({ associationAutoAccept: value });
+                        if (!result.success) {
+                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
+                        }
                     }));
 
             new Setting(associationGroup)
@@ -892,7 +886,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                             // Refresh stats display
                             this.updateAssociationStats(statsContainer);
                         } catch (error) {
-                            new Notice(`❌ 扫描失败: ${error.message}`);
+                            new Notice(`❌ 扫描失败: ${getErrorMessage(error)}`);
                         }
                     }));
 
@@ -917,7 +911,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                             await this.app.vault.create(fileName, JSON.stringify(payload, null, 2));
                             new Notice(`✅ 已导出统计和关联到 ${fileName}`);
                         } catch (error) {
-                            new Notice(`❌ 导出失败: ${error.message}`);
+                            new Notice(`❌ 导出失败: ${getErrorMessage(error)}`);
                         }
                     }));
 
@@ -956,7 +950,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                             new Notice('✅ 数据库已清空');
                             this.display();
                         } catch (error) {
-                            new Notice(`❌ 清空失败: ${error.message}`);
+                            new Notice(`❌ 清空失败: ${getErrorMessage(error)}`);
                         }
                     }
                 }));
@@ -983,7 +977,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             fileItem.createEl('span', { text: ' 个文件' });
         } catch (error) {
             container.createEl('p', {
-                text: `无法获取统计信息: ${error.message}`,
+                text: `无法获取统计信息: ${getErrorMessage(error)}`,
                 cls: 'error-text',
             });
         }
@@ -1013,7 +1007,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
             row2.createEl('strong', { text: stats.avgConceptsPerNote.toFixed(1) });
         } catch (error) {
             container.createEl('p', {
-                text: '无法获取关联统计',
+                text: `无法获取关联统计: ${getErrorMessage(error)}`,
                 cls: 'error-text',
             });
         }
