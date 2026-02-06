@@ -1,8 +1,3 @@
-/**
- * AssociationPanel - React component for displaying and managing note associations
- * v0.6.0: Smart association discovery UI
- */
-
 import React, { useState, useEffect } from "react";
 import { NoteAssociation } from "@services/association-engine";
 
@@ -133,6 +128,16 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
             {/* 进度条 */}
             {batchProgress?.isProcessing && (
                 <BatchProgressBar progress={batchProgress} />
+            )}
+
+            {/* 关联列表 */}
+            {associations && associations.length > 0 && (
+                <AssociationList
+                    associations={associations}
+                    onAccept={onAccept}
+                    onIgnore={onIgnore}
+                    onOpenFile={onOpenFile}
+                />
             )}
 
             {/* 概念列表 */}
@@ -429,6 +434,99 @@ const BatchProgressBar: React.FC<BatchProgressBarProps> = ({ progress }) => {
                     {progress.totalConcepts} 个概念
                 </span>
             </div>
+        </div>
+    );
+};
+
+/**
+ * AssociationList - List of note associations
+ */
+interface AssociationListProps {
+    associations: NoteAssociation[];
+    onAccept: (association: NoteAssociation) => Promise<void>;
+    onIgnore: (association: NoteAssociation) => void;
+    onOpenFile: (noteId: string) => void;
+}
+
+const AssociationList: React.FC<AssociationListProps> = ({
+    associations,
+    onAccept,
+    onIgnore,
+    onOpenFile,
+}) => {
+    const handleAccept = async (association: NoteAssociation) => {
+        await onAccept(association);
+    };
+
+    const handleIgnore = (association: NoteAssociation) => {
+        onIgnore(association);
+    };
+
+    if (associations.length === 0) return null;
+
+    return (
+        <div className="memo-echo-association-list">
+            <div className="memo-echo-association-list-header">
+                <span>
+                    🔗 关联建议 ({associations.length}个)
+                </span>
+            </div>
+            {associations.map((association, index) => (
+                <div key={index} className="memo-echo-association-item">
+                    <div className="memo-echo-association-notes">
+                        <div className="memo-echo-association-note">
+                            <span
+                                className="memo-echo-association-note-link"
+                                onClick={() => onOpenFile(association.sourceNoteId)}
+                            >
+                                📄 {association.sourceNoteTitle || association.sourceNoteId}
+                            </span>
+                        </div>
+                        <div className="memo-echo-association-arrow">↔</div>
+                        <div className="memo-echo-association-note">
+                            <span
+                                className="memo-echo-association-note-link"
+                                onClick={() => onOpenFile(association.targetNoteId)}
+                            >
+                                📄 {association.targetNoteTitle || association.targetNoteId}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="memo-echo-association-concepts">
+                        {association.sharedConcepts.map((concept) => (
+                            <span key={concept} className="memo-echo-association-concept-tag">
+                                [[{concept}]]
+                            </span>
+                        ))}
+                    </div>
+                    <div className="memo-echo-association-meta">
+                        <span className="memo-echo-association-confidence">
+                            置信度: {Math.round(association.confidence * 100)}%
+                        </span>
+                        {association.vectorSimilarity !== undefined && (
+                            <span className="memo-echo-association-similarity">
+                                相似度: {Math.round(association.vectorSimilarity * 100)}%
+                            </span>
+                        )}
+                    </div>
+                    <div className="memo-echo-association-actions">
+                        <button
+                            className="memo-echo-concept-btn memo-echo-concept-btn-primary"
+                            onClick={() => handleAccept(association)}
+                            title="接受关联并添加概念到两个笔记"
+                        >
+                            ✓ 接受
+                        </button>
+                        <button
+                            className="memo-echo-concept-btn"
+                            onClick={() => handleIgnore(association)}
+                            title="忽略此关联"
+                        >
+                            ✗ 忽略
+                        </button>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 };

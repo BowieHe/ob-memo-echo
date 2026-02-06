@@ -1,7 +1,7 @@
 import { Plugin, TFile, Notice } from 'obsidian';
-import { UnifiedSearchView } from './unified-search-view';
-import { AssociationView } from './association-view';
-import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './settings';
+import { UnifiedSearchView } from './views/unified-search-view';
+import { AssociationView } from './views/association-view';
+import { MemoEchoSettingTab, MemoEchoSettings, DEFAULT_SETTINGS } from './views/settings';
 import { EmbeddingService } from './services/embedding-service';
 import type { VectorBackend } from './services/vector-backend';
 import { QdrantBackend } from './services/qdrant-backend';
@@ -56,12 +56,12 @@ export default class MemoEchoPlugin extends Plugin {
 
         // Initialize services with saved settings
         this.embeddingService = new EmbeddingService({
-            provider: this.settings.embeddingProvider,
-            ollamaUrl: this.settings.ollamaUrl,
-            ollamaModel: this.settings.ollamaModel,
-            openaiApiKey: this.settings.openaiApiKey,
+            provider: this.settings.embeddingConfig.provider,
+            ollamaUrl: this.settings.embeddingConfig.baseUrl,
+            ollamaModel: this.settings.embeddingConfig.model,
+            openaiApiKey: this.settings.embeddingConfig.apiKey,
         });
-        console.log(`🤖 Embedding service initialized: ${this.settings.embeddingProvider}`);
+        console.log(`🤖 Embedding service initialized: ${this.settings.embeddingConfig.provider}`);
 
         // VectorBackend - using Qdrant by default (v0.5.0)
         this.vectorBackend = new QdrantBackend(
@@ -79,38 +79,28 @@ export default class MemoEchoPlugin extends Plugin {
 
         // v0.2.0: Initialize metadata extractor
         this.metadataExtractor = new MetadataExtractor({
-            enableAi: this.settings.enableAiMetadata,
-            provider: this.settings.aiGenProvider,
-            ollamaUrl: this.settings.aiGenUrl,
-            ollamaModel: this.settings.aiGenModel,
-            openaiUrl: this.settings.aiGenUrl,
-            openaiModel: this.settings.aiGenModel,
-            openaiApiKey: this.settings.aiGenApiKey
+            provider: this.settings.llmConfig.provider,
+            ollamaUrl: this.settings.llmConfig.baseUrl,
+            ollamaModel: this.settings.llmConfig.model,
+            openaiUrl: this.settings.llmConfig.baseUrl,
+            openaiModel: this.settings.llmConfig.model,
+            openaiApiKey: this.settings.llmConfig.apiKey
         });
         console.log('🏷️ Metadata extractor initialized');
 
         this.logger = createLogger(this.settings.debugLogging);
 
         // v0.5.0: Initialize concept extractor
-        this.conceptExtractor = new ConceptExtractor({
-            provider: this.settings.conceptExtractionProvider,
-            ollamaUrl: this.settings.ollamaUrl,
-            ollamaModel: this.settings.aiGenModel,
-            openaiApiKey: this.settings.openaiApiKey,
-            // v0.6.0: Abstract concept extraction settings
-            focusOnAbstractConcepts: this.settings.focusOnAbstractConcepts,
-            minConfidence: this.settings.minConceptConfidence,
-            excludeGenericConcepts: this.settings.excludeGenericConcepts
-                ? this.settings.excludeGenericConcepts.split(',').map(s => s.trim()).filter(s => s.length > 0)
-                : [],
-            // v0.8.1: Language adaptation
-            language: this.settings.conceptLanguage,
-        }, this.logger);
+        this.conceptExtractor = new ConceptExtractor(
+            () => this.settings.llmConfig,
+            this.settings.conceptExtraction,
+            this.logger
+        );
         console.log('💡 Concept extractor initialized (v0.6.0)');
 
         // v0.6.0: Initialize association engine (before indexManager)
         this.associationEngine = new SimpleAssociationEngine(this.conceptExtractor, {
-            minConfidence: this.settings.associationMinConfidence,
+            minConfidence: this.settings.association.associationMinConfidence,
         });
         console.log('🔗 Association engine initialized (v0.6.0)');
 
@@ -140,7 +130,7 @@ export default class MemoEchoPlugin extends Plugin {
         // v0.5.0: Initialize frontmatter service
         this.frontmatterService = new FrontmatterService(
             this.app,
-            this.settings.conceptPagePrefix
+            this.settings.conceptFE.conceptPagePrefix
         );
         console.log('📝 Frontmatter service initialized');
 
@@ -282,17 +272,17 @@ export default class MemoEchoPlugin extends Plugin {
     private getConceptExtractionSettings(): ConceptExtractionSettings {
         return {
             enableConceptExtraction: this.settings.enableConceptExtraction,
-            injectToFrontmatter: this.settings.injectToFrontmatter,
-            autoCreateConceptPage: this.settings.autoCreateConceptPage,
-            conceptPagePrefix: this.settings.conceptPagePrefix,
+            injectToFrontmatter: this.settings.conceptFE.injectToFrontmatter,
+            autoCreateConceptPage: this.settings.conceptFE.autoCreateConceptPage,
+            conceptPagePrefix: this.settings.conceptFE.conceptPagePrefix,
             conceptCountRules: this.settings.conceptCountRules,
-            skipRules: this.settings.skipRules,
-            conceptDictionaryPath: this.settings.conceptDictionaryPath,
+            skipRules: this.settings.conceptSkip,
+            conceptDictionaryPath: this.settings.conceptSkip.conceptDictionaryPath,
         };
     }
 
     updateConceptExtractionSettings(): void {
-        this.frontmatterService.updateConceptPagePrefix(this.settings.conceptPagePrefix);
+        this.frontmatterService.updateConceptPagePrefix(this.settings.conceptFE.conceptPagePrefix);
         this.conceptExtractionPipeline.updateSettings(this.getConceptExtractionSettings());
     }
 

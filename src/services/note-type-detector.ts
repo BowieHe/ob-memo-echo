@@ -1,9 +1,10 @@
-import type { NoteTypeDetection, SkipRules } from '@core/types/concept';
+import type { NoteTypeDetection } from '@core/types/concept';
+import type { ConceptSkipConfig } from '@core/types/setting';
 
 export class NoteTypeDetector {
-    private rules: SkipRules;
+    private rules: ConceptSkipConfig;
 
-    constructor(rules: SkipRules) {
+    constructor(rules: ConceptSkipConfig) {
         this.rules = rules;
     }
 
@@ -17,13 +18,6 @@ export class NoteTypeDetector {
         }
 
         const textContent = this.extractTextContent(note.content);
-        const imageCount = (note.content.match(/!\[\[.*?\]\]/g) || []).length;
-        const totalLength = note.content.length || 1;
-
-        if (imageCount > 5 && (imageCount * 50) / totalLength > this.rules.maxImageRatio) {
-            return { type: 'image-collection', confidence: 0.9, shouldSkip: true, reason: 'Image-heavy note' };
-        }
-
         const lines = textContent.split('\n').filter((line) => line.trim());
         const avgLineLength = lines.length > 0 ? textContent.length / lines.length : 0;
         if (lines.length > 20 && avgLineLength < 30) {

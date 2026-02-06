@@ -30,14 +30,14 @@ export class ConceptExtractionPipeline {
         this.frontmatterService = frontmatterService;
         this.settings = settings;
         this.detector = new NoteTypeDetector(settings.skipRules);
-        this.dictionaryStore = new ConceptDictionaryStore(app, settings.conceptDictionaryPath);
+        this.dictionaryStore = new ConceptDictionaryStore(app, settings.skipRules.conceptDictionaryPath);
         this.logger = logger;
     }
 
     updateSettings(settings: ConceptExtractionSettings): void {
         this.settings = settings;
         this.detector = new NoteTypeDetector(settings.skipRules);
-        this.dictionaryStore = new ConceptDictionaryStore(this.app, settings.conceptDictionaryPath);
+        this.dictionaryStore = new ConceptDictionaryStore(this.app, settings.skipRules.conceptDictionaryPath);
     }
 
     setLogger(logger?: Logger): void {

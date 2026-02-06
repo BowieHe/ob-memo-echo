@@ -58,12 +58,12 @@ export interface DetailedConceptExtraction {
  * Configuration for ConceptExtractor
  */
 export interface ConceptExtractionConfig {
-    provider: 'ollama' | 'openai' | 'rules';
-    ollamaUrl?: string;
-    ollamaModel?: string;
-    ollamaNumPredict?: number;
-    openaiApiKey?: string;
-    openaiModel?: string;
+    // provider: 'ollama' | 'openai' | 'rules';
+    // ollamaUrl?: string;
+    // ollamaModel?: string;
+    // ollamaNumPredict?: number;
+    // openaiApiKey?: string;
+    // openaiModel?: string;
     maxConcepts?: number;
 
     // v0.6.0 fields

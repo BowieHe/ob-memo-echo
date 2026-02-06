@@ -7,15 +7,15 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { AssociationPanel } from './components/AssociationPanel';
+import { AssociationPanel } from '../components/AssociationPanel';
 import type { ConfirmedConcept } from '@core/types/concept';
 import type { ExtractedConceptWithMatch } from '@core/types/concept';
-import { SimpleAssociationEngine, NoteAssociation } from './services/association-engine';
-import { AssociationPreferences } from './services/association-preferences';
+import { SimpleAssociationEngine, NoteAssociation } from '../services/association-engine';
+import { AssociationPreferences } from '../services/association-preferences';
 import type { MemoEchoSettings } from './settings';
-import { FrontmatterService } from './services/frontmatter-service';
-import { extractWikilinkConcepts } from './utils/wikilink-utils';
-import { VIEW_TYPE_ASSOCIATION } from './core/constants';
+import { FrontmatterService } from '../services/frontmatter-service';
+import { extractWikilinkConcepts } from '../utils/wikilink-utils';
+import { VIEW_TYPE_ASSOCIATION } from '../core/constants';
 
 export class AssociationView extends ItemView {
     private root: Root | null = null;
@@ -161,12 +161,12 @@ export class AssociationView extends ItemView {
             }
 
             if (options.scan) {
-                await this.scanAllFiles(files, settings.associationAutoScanBatchSize || 50);
+                await this.scanAllFiles(files, settings.association.associationAutoScanBatchSize || 50);
             }
 
             // Discover associations
             const associations = await this.associationEngine.discoverAssociations();
-            const minConfidence = settings.associationMinConfidence || 0.5;
+            const minConfidence = settings.association.associationMinConfidence || 0.5;
 
             // Apply confidence filter
             const confidenceFiltered = associations.filter(
@@ -177,8 +177,8 @@ export class AssociationView extends ItemView {
             let filtered = this.associationPreferences.filterAssociations(confidenceFiltered);
 
             // Auto-accept high confidence associations if enabled
-            if (settings.associationAutoAccept) {
-                const threshold = settings.associationAutoAcceptConfidence || 0.9;
+            if (settings.association.associationAutoAccept) {
+                const threshold = settings.association.associationAutoAcceptConfidence || 0.9;
                 const autoAccept = filtered.filter((assoc) => assoc.confidence >= threshold);
                 const remaining = filtered.filter((assoc) => assoc.confidence < threshold);
 

@@ -4,6 +4,7 @@
  */
 
 import type { ConceptExtractionConfig, DetailedConceptExtraction, ExtractedConcepts, ExtractedConceptDetail } from '@core/types/extraction';
+import { BaseModelConfig } from '@core/types/setting';
 import type { Logger } from '@utils/logger';
 
 export type { ConceptExtractionConfig, DetailedConceptExtraction, ExtractedConcepts, ExtractedConceptDetail };
@@ -11,22 +12,17 @@ export type { ConceptExtractionConfig, DetailedConceptExtraction, ExtractedConce
 export class ConceptExtractor {
     private config: ConceptExtractionConfig;
     private logger?: Logger;
+    private getLlmConfig: () => BaseModelConfig;
 
-    constructor(config: ConceptExtractionConfig, logger?: Logger) {
+    constructor(getLlmConfig: () => BaseModelConfig, config: ConceptExtractionConfig, logger?: Logger) {
         this.config = {
             maxConcepts: 5,
-            ollamaUrl: 'http://localhost:11434',
-            ollamaModel: 'qwen3:4b',
-            ollamaNumPredict: 4096,  // Increased from 2048 to prevent JSON truncation
-            openaiModel: 'gpt-4o-mini',
-            // v0.6.0 默认值
-            focusOnAbstractConcepts: true,      // 默认专注于抽象概念
-            minConfidence: 0.7,                 // 默认最小置信度阈值
-            excludeGenericConcepts: [],         // 默认不排除任何通用概念
-            // v0.8.1 默认值
-            language: 'auto',
+            focusOnAbstractConcepts: true,
+            minConfidence: 0.7,
+            excludeGenericConcepts: [],
             ...config,
         };
+        this.getLlmConfig = getLlmConfig;
         this.logger = logger;
     }
 
@@ -39,17 +35,12 @@ export class ConceptExtractor {
         options?: { existingConcepts?: string[]; maxConcepts?: number }
     ): Promise<ExtractedConcepts> {
         try {
-            this.logger?.debug('Concept extraction started', {
-                provider: this.config.provider,
-                title,
-                contentLength: content.length,
-            });
-            switch (this.config.provider) {
+            const llmConfig = this.getLlmConfig();
+            switch (llmConfig.provider) {
                 case 'ollama':
                     return await this.extractWithOllama(content, title, options);
                 case 'openai':
                     return await this.extractWithOpenAI(content, title, options);
-                case 'rules':
                 default:
                     return this.extractWithRules(content, title);
             }
@@ -69,12 +60,12 @@ export class ConceptExtractor {
         options?: { existingConcepts?: string[]; maxConcepts?: number }
     ): Promise<DetailedConceptExtraction> {
         try {
-            switch (this.config.provider) {
+            const llmConfig = this.getLlmConfig();
+            switch (llmConfig.provider) {
                 case 'ollama':
                     return await this.extractWithOllamaDetailed(content, title, options);
                 case 'openai':
                     return await this.extractWithOpenAIDetailed(content, title, options);
-                case 'rules':
                 default:
                     return this.extractWithRulesDetailed(content, title, options);
             }
@@ -282,11 +273,6 @@ export class ConceptExtractor {
 
         // v0.6.0: Different prompt based on focusOnAbstractConcepts
         if (this.config.focusOnAbstractConcepts) {
-            const language = this.config.language || 'auto';
-            const languageInstruction = language === 'auto'
-                ? '4. Return concepts in the note\'s primary language'
-                : `4. Return concepts in ${this.getLanguageName(language)} only`;
-
             return `${this.buildSystemPrompt()}
 
 Extract ${maxConcepts} high-level concepts from this note.
@@ -308,7 +294,7 @@ ${existingConcepts}
 1. Read the note carefully to understand its main themes
 2. Identify ${maxConcepts} concepts at the HIGHEST appropriate abstraction level
 3. Check if any extracted concepts match or are aliases of existing concepts
-${languageInstruction}
+4. Extract concepts in the same language as the note content
 
 ## Response Format
 
@@ -355,8 +341,6 @@ Your task is to extract STABLE, HIGH-ABSTRACTION concepts that connect notes in 
 
 3. Connectivity Potential: Choose concepts likely to appear in multiple notes
 
-${this.getLanguageInstruction()}
-
 ## DO NOT Extract
 
 - Proper nouns unless they represent concepts
@@ -366,59 +350,11 @@ ${this.getLanguageInstruction()}
 - Note-specific details that won't connect to other notes`;
     }
 
-    /**
-     * Get language instruction for the system prompt based on config
-     * v0.8.1: Language adaptation
-     */
-    private getLanguageInstruction(): string {
-        const language = this.config.language || 'auto';
-
-        if (language === 'auto') {
-            return `4. Language Consistency:
-   - Use the same language as the note content
-   - For mixed-language notes, prefer the dominant language
-   - Maintain consistent terminology across extractions`;
-        }
-
-        const languageNames: Record<string, string> = {
-            'en': 'English',
-            'zh': 'Chinese',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'es': 'Spanish',
-            'fr': 'French',
-            'de': 'German',
-        };
-
-        const languageName = languageNames[language] || language;
-        return `4. Language Requirement:
-   - Extract ALL concepts in ${languageName} only
-   - Do not mix languages in the extracted concepts
-   - If the note is in a different language, translate concepts to ${languageName}`;
-    }
-
-    /**
-     * Get human-readable language name
-     * v0.8.1: Language adaptation
-     */
-    private getLanguageName(languageCode: string): string {
-        const languageNames: Record<string, string> = {
-            'auto': "the note's primary language",
-            'en': 'English',
-            'zh': 'Chinese',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'es': 'Spanish',
-            'fr': 'French',
-            'de': 'German',
-        };
-        return languageNames[languageCode] || languageCode;
-    }
-
     private async requestOllama(prompt: string): Promise<string> {
+        const llmConfig = this.getLlmConfig();
         this.logger?.debug('Sending Ollama request', {
-            url: this.config.ollamaUrl,
-            model: this.config.ollamaModel,
+            url: llmConfig.baseUrl,
+            model: llmConfig.model,
             promptLength: prompt.length,
         });
 
@@ -427,19 +363,16 @@ ${this.getLanguageInstruction()}
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
-            const response = await fetch(`${this.config.ollamaUrl}/api/generate`, {
+            const response = await fetch(`${llmConfig.baseUrl}/api/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    model: this.config.ollamaModel,
+                    model: llmConfig.model,
                     prompt,
                     stream: false,
-                    // format: 'json',  // REMOVED: This parameter can cause truncation issues with some models
-                    num_predict: this.config.ollamaNumPredict,
-                    // Add options to ensure complete output
                     options: {
-                        temperature: 0.1,  // Lower temperature for more deterministic output
-                        num_ctx: 8192,     // Context window size
+                        temperature: 0.1,
+                        num_ctx: 8192,
                     },
                 }),
                 signal: controller.signal,
@@ -466,14 +399,15 @@ ${this.getLanguageInstruction()}
     }
 
     private async requestOpenAI(prompt: string, systemPrompt: string): Promise<string> {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const llmConfig = this.getLlmConfig();
+        const response = await fetch(`${llmConfig.baseUrl}/v1/chat/completions`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${this.config.openaiApiKey}`,
+                'Authorization': `Bearer ${llmConfig.apiKey}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: this.config.openaiModel,
+                model: llmConfig.model,
                 messages: [
                     {
                         role: 'system',

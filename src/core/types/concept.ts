@@ -1,3 +1,5 @@
+import type { ConceptSkipConfig } from './setting';
+
 export interface ConceptDictionary {
     version: string;
     lastUpdated: string;
@@ -45,7 +47,7 @@ export interface ConceptExtractionSettings {
     autoCreateConceptPage: boolean;
     conceptPagePrefix: string;
     conceptCountRules: ConceptCountRule[];
-    skipRules: SkipRules;
+    skipRules: ConceptSkipConfig;
     conceptDictionaryPath: string;
 }
 
