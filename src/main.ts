@@ -12,13 +12,20 @@ import { VIEW_TYPE_INDEX_SEARCH, VIEW_TYPE_CONCEPT } from './core/constants';
 import { ParagraphDetector } from './services/paragraph-detector';
 import { FrontmatterService } from './services/frontmatter-service';
 import { ConceptExtractor } from './services/concept-extractor';
-import { ConceptExtractionPipeline } from './services/concept-extraction-pipeline';
 import { ConceptRegistry } from './services/concept-registry';
-import { SimpleAssociationEngine } from './services/association-engine';
-import { AssociationPreferences } from './services/association-preferences';
-import type { ConceptExtractionSettings, ConfirmedConcept, ExtractedConceptWithMatch } from './core/types/concept';
+import { SearchService } from './services/search-service';
+import type { ExtractedConceptWithMatch } from './core/types/concept';
+import type { BaseModelConfig } from './core/types/setting';
 import { SettingsManager } from './core/settings/settings-manager';
 import { getErrorMessage } from '@utils/error';
+
+// Type for confirmed concepts
+interface ConfirmedConcept {
+    name: string;
+    isNew: boolean;
+    createPage: boolean;
+    aliases?: string[];
+}
 
 export default class MemoEchoPlugin extends Plugin {
     private indexSearchView: IndexSearchView | null = null;
@@ -37,22 +44,36 @@ export default class MemoEchoPlugin extends Plugin {
     chunker!: Chunker;
     metadataExtractor!: MetadataExtractor;
     indexManager!: VectorIndexManager;
-    paragraphDetector: ParagraphDetector | null = null;
 
     // v0.5.0 services
     frontmatterService!: FrontmatterService;
     conceptExtractor!: ConceptExtractor;
-    conceptExtractionPipeline!: ConceptExtractionPipeline;
-
-    // v0.7.0 services
     conceptRegistry!: ConceptRegistry;
 
-    // v0.6.0 services
-    associationEngine!: SimpleAssociationEngine;
-    associationPreferences!: AssociationPreferences;
+    // v0.7.0 services
+    searchService!: SearchService;
 
     // Settings manager
     settingsManager!: SettingsManager;
+
+    /**
+     * Convert BaseModelConfig to EmbeddingConfig for EmbeddingService
+     */
+    private convertToEmbeddingConfig(config: Partial<BaseModelConfig>): import('./services/embedding-service').EmbeddingConfig {
+        const embeddingConfig: import('./services/embedding-service').EmbeddingConfig = {
+            provider: config.provider as 'ollama' | 'openai' | 'local',
+        };
+
+        if (config.provider === 'ollama') {
+            if (config.baseUrl) embeddingConfig.ollamaUrl = config.baseUrl;
+            if (config.model) embeddingConfig.ollamaModel = config.model;
+        } else if (config.provider === 'openai') {
+            if (config.apiKey) embeddingConfig.openaiApiKey = config.apiKey;
+            if (config.model) embeddingConfig.openaiModel = config.model;
+        }
+
+        return embeddingConfig;
+    }
 
     async onload() {
         console.log('Loading Memo Echo Plugin v0.6.0');
@@ -62,13 +83,14 @@ export default class MemoEchoPlugin extends Plugin {
         console.log('📝 Loaded settings:', this.settings);
 
         // Initialize services with saved settings
-        this.embeddingService = new EmbeddingService(this.settings.embeddingConfig);
+        this.embeddingService = new EmbeddingService(this.convertToEmbeddingConfig(this.settings.embeddingConfig));
         console.log(`🤖 Embedding service initialized: ${this.settings.embeddingConfig.provider}`);
 
         // VectorBackend - using Qdrant by default (v0.5.0)
         this.vectorBackend = new QdrantBackend(
             this.settings.qdrantCollection,
-            this.settings.qdrantUrl
+            this.settings.qdrantUrl,
+            this.embeddingService  // Pass embeddingService for dimension detection
         );
         console.log(`🗄️ Vector backend initialized: Qdrant @ ${this.settings.qdrantUrl}`);
 
@@ -84,26 +106,14 @@ export default class MemoEchoPlugin extends Plugin {
             () => this.settings.llmConfig,
             this.settings.conceptExtraction
         );
-        console.log('💡 Concept extractor initialized (v0.6.0)');
+        console.log('💡 Concept extractor initialized (v0.7.0)');
 
-        // v0.6.0: Initialize association engine (before indexManager)
-        this.associationEngine = new SimpleAssociationEngine(this.conceptExtractor, {
-            minConfidence: this.settings.association.associationMinConfidence,
-        });
-        console.log('🔗 Association engine initialized (v0.6.0)');
-
-        // v0.6.0: Initialize association preferences
-        this.associationPreferences = new AssociationPreferences(
-            () => ({
-                ignoredAssociations: this.settings.associationIgnoredAssociations,
-                deletedConcepts: this.settings.associationDeletedConcepts,
-            }),
-            async (next) => {
-                this.settings.associationIgnoredAssociations = next.ignoredAssociations;
-                this.settings.associationDeletedConcepts = next.deletedConcepts;
-                await this.saveSettings();
-            },
+        // v0.7.0: Initialize search service
+        this.searchService = new SearchService(
+            this.embeddingService,
+            this.vectorBackend
         );
+        console.log('🔍 Search service initialized (v0.7.0)');
 
         // v0.5.0: Initialize index manager with VectorBackend
         this.indexManager = new VectorIndexManager(
@@ -111,8 +121,7 @@ export default class MemoEchoPlugin extends Plugin {
             this.embeddingService,
             this.chunker,
             this.metadataExtractor,
-            50 * 1024 * 1024, // 50MB cache
-            this.associationEngine,
+            50 * 1024 * 1024 // 50MB cache
         );
 
         // v0.5.0: Initialize frontmatter service
@@ -122,7 +131,7 @@ export default class MemoEchoPlugin extends Plugin {
         );
         console.log('📝 Frontmatter service initialized');
 
-        // v0.7.0: Initialize concept registry
+        // Initialize concept registry
         this.conceptRegistry = new ConceptRegistry(
             this.vectorBackend as QdrantBackend,
             this.embeddingService,
@@ -132,15 +141,7 @@ export default class MemoEchoPlugin extends Plugin {
                 conceptPagePrefix: this.settings.conceptFE.conceptPagePrefix,
             }
         );
-        console.log('💡 Concept registry initialized');
-
-        this.conceptExtractionPipeline = new ConceptExtractionPipeline(
-            this.app,
-            this.conceptExtractor,
-            this.frontmatterService,
-            this.getConceptExtractionSettings(),
-            this.conceptRegistry
-        );
+        console.log('💾 Concept registry initialized');
 
         // Initialize SettingsManager with service updaters
         this.settingsManager = new SettingsManager(
@@ -149,17 +150,7 @@ export default class MemoEchoPlugin extends Plugin {
             {
                 // Adapter: convert BaseModelConfig (baseUrl, model, apiKey) to EmbeddingConfig
                 embedding: (config) => {
-                    const embeddingConfig: Partial<import('./services/embedding-service').EmbeddingConfig> = {
-                        provider: config.provider as 'ollama' | 'openai' | 'local',
-                    };
-                    if (config.provider === 'ollama') {
-                        if (config.baseUrl) embeddingConfig.ollamaUrl = config.baseUrl;
-                        if (config.model) embeddingConfig.ollamaModel = config.model;
-                    } else if (config.provider === 'openai') {
-                        if (config.apiKey) embeddingConfig.openaiApiKey = config.apiKey;
-                        if (config.model) embeddingConfig.openaiModel = config.model;
-                    }
-                    this.embeddingService.updateConfig(embeddingConfig);
+                    this.embeddingService.updateConfig(this.convertToEmbeddingConfig(config));
                 },
                 // Adapter: convert BaseModelConfig (baseUrl, model, apiKey) to MetadataExtractorConfig
                 llm: (config) => {
@@ -177,10 +168,6 @@ export default class MemoEchoPlugin extends Plugin {
                     this.metadataExtractor?.updateConfig(llmConfig);
                 },
                 conceptExtraction: (config) => this.conceptExtractor?.updateConfig(config),
-                association: (config) => this.associationEngine?.updateConfig(config),
-                uiAssociation: (config) => {
-                    this.settings.association = { ...this.settings.association, ...config };
-                },
                 conceptExtractionSettings: () => this.updateConceptExtractionSettings(),
                 conceptFE: (config) => {
                     this.settings.conceptFE = { ...this.settings.conceptFE, ...config };
@@ -198,23 +185,22 @@ export default class MemoEchoPlugin extends Plugin {
             (leaf) => {
                 this.indexSearchView = new IndexSearchView(
                     leaf,
-                    this.indexManager,
+                    this.searchService,
                     this.indexCurrentFileWithConcepts,
                 );
                 return this.indexSearchView;
             }
         );
 
-        // v0.6.0: Register association view
+        // v0.7.0: Register concept confirmation view
         this.registerView(
             VIEW_TYPE_CONCEPT,
             (leaf) => {
                 this.conceptView = new ConceptView(
                     leaf,
-                    this.associationEngine,
                     this.frontmatterService,
-                    this.associationPreferences,
                     () => this.settings,
+                    () => this.saveSettings(),
                     this.handleCurrentFileAssociation,
                     this.handleAllFilesAssociation,
                 );
@@ -265,8 +251,10 @@ export default class MemoEchoPlugin extends Plugin {
         console.log('Unloading Memo Echo Plugin');
 
         // Cleanup
-        if (this.paragraphDetector) {
-            this.paragraphDetector.destroy();
+        const detector = (this as any)._paragraphDetector as ParagraphDetector | undefined;
+        if (detector) {
+            detector.destroy();
+            delete (this as any)._paragraphDetector;
         }
         if (this.indexManager) {
             this.indexManager.stop();
@@ -319,20 +307,8 @@ export default class MemoEchoPlugin extends Plugin {
         }
     };
 
-    private getConceptExtractionSettings(): ConceptExtractionSettings {
-        return {
-            enableConceptExtraction: this.settings.enableConceptExtraction,
-            injectToFrontmatter: this.settings.conceptFE.injectToFrontmatter,
-            autoCreateConceptPage: this.settings.conceptFE.autoCreateConceptPage,
-            conceptPagePrefix: this.settings.conceptFE.conceptPagePrefix,
-            skipRules: this.settings.conceptSkip,
-            conceptDictionaryPath: this.settings.conceptSkip.conceptDictionaryPath,
-        };
-    }
-
     updateConceptExtractionSettings(): void {
         this.frontmatterService.updateConceptPagePrefix(this.settings.conceptFE.conceptPagePrefix);
-        this.conceptExtractionPipeline.updateSettings(this.getConceptExtractionSettings());
     }
 
     // v0.6.0: Activate association view
@@ -371,18 +347,33 @@ export default class MemoEchoPlugin extends Plugin {
         console.log('[MemoEcho] Association current file requested:', activeFile.path);
         try {
             const content = await this.app.vault.read(activeFile);
-            const tags = this.app.metadataCache.getFileCache(activeFile)?.tags?.map((t) => t.tag) || [];
 
-            const result = await this.conceptExtractionPipeline.extract({
-                path: activeFile.path,
-                title: activeFile.basename,
-                content,
-                tags,
-            });
+            // Extract concepts using ConceptExtractor
+            const detailed = await this.conceptExtractor.extractDetailed(content, activeFile.basename);
 
-            if (result.skipped || !result.concepts || result.concepts.length === 0) {
+            if (detailed.skipReason || !detailed.concepts || detailed.concepts.length === 0) {
                 new Notice('ℹ️ 当前文件没有提取到概念');
                 return;
+            }
+
+            // Process concepts through ConceptRegistry for deduplication
+            const concepts: ExtractedConceptWithMatch[] = [];
+            for (const extracted of detailed.concepts) {
+                const result = await this.conceptRegistry.registerOrMatch(
+                    extracted.name,
+                    extracted.reason
+                );
+                concepts.push({
+                    name: result.concept,
+                    confidence: extracted.confidence,
+                    reason: extracted.reason,
+                    matchInfo: {
+                        originalTerm: extracted.name,
+                        matchedConcept: result.concept,
+                        matchType: result.isNew ? 'new' : 'alias',
+                        confidence: result.similarity,
+                    },
+                });
             }
 
             // Dispatch event to association view
@@ -393,11 +384,11 @@ export default class MemoEchoPlugin extends Plugin {
                         title: activeFile.basename,
                         content,
                     },
-                    concepts: result.concepts,
+                    concepts: concepts,
                 },
             }));
 
-            new Notice(`💡 有 ${result.concepts.length} 个概念待确认`);
+            new Notice(`💡 有 ${concepts.length} 个概念待确认`);
 
             (this as any).pendingConceptFile = activeFile;
         } catch (error) {
@@ -473,17 +464,49 @@ export default class MemoEchoPlugin extends Plugin {
                 const file = files[i];
                 try {
                     const content = await this.app.vault.read(file);
-                    const tags = this.app.metadataCache.getFileCache(file)?.tags?.map((t) => t.tag) || [];
 
-                    const result = await this.conceptExtractionPipeline.extract({
-                        path: file.path,
-                        title: file.basename,
-                        content,
-                        tags,
-                    });
+                    // Extract concepts using ConceptExtractor
+                    const detailed = await this.conceptExtractor.extractDetailed(content, file.basename);
 
-                    if (!result.skipped && result.concepts && result.concepts.length > 0) {
-                        conceptCount += result.concepts.length;
+                    if (detailed.skipReason || !detailed.concepts || detailed.concepts.length === 0) {
+                        // File was skipped or no concepts found
+                        processedCount++;
+
+                        // Dispatch progress update
+                        window.dispatchEvent(new CustomEvent('memo-echo:batch-progress', {
+                            detail: {
+                                totalFiles: files.length,
+                                processedFiles: processedCount,
+                                totalConcepts: conceptCount,
+                                isProcessing: true,
+                            },
+                        }));
+
+                        continue;
+                    }
+
+                    // Process concepts through ConceptRegistry for deduplication
+                    const concepts: ExtractedConceptWithMatch[] = [];
+                    for (const extracted of detailed.concepts) {
+                        const result = await this.conceptRegistry.registerOrMatch(
+                            extracted.name,
+                            extracted.reason
+                        );
+                        concepts.push({
+                            name: result.concept,
+                            confidence: extracted.confidence,
+                            reason: extracted.reason,
+                            matchInfo: {
+                                originalTerm: extracted.name,
+                                matchedConcept: result.concept,
+                                matchType: result.isNew ? 'new' : 'alias',
+                                confidence: result.similarity,
+                            },
+                        });
+                    }
+
+                    if (concepts.length > 0) {
+                        conceptCount += concepts.length;
 
                         // Accumulate results instead of dispatching events immediately
                         batchResults.push({
@@ -492,7 +515,7 @@ export default class MemoEchoPlugin extends Plugin {
                                 title: file.basename,
                                 content,
                             },
-                            concepts: result.concepts,
+                            concepts: concepts,
                         });
                     }
 
@@ -568,7 +591,7 @@ export default class MemoEchoPlugin extends Plugin {
     private setupConceptEventListeners() {
         // Listen for concept apply events from sidebar
         window.addEventListener('memo-echo:concepts-apply', async (event) => {
-            const concepts = event.detail;
+            const concepts = event.detail as unknown as ExtractedConceptWithMatch[];
             const pendingFile = (this as any).pendingConceptFile as TFile | undefined;
 
             if (!pendingFile) {
@@ -577,7 +600,27 @@ export default class MemoEchoPlugin extends Plugin {
             }
 
             try {
-                await this.conceptExtractionPipeline.apply(pendingFile, concepts);
+                // Use ConceptRegistry to match/deduplicate concepts
+                const confirmedConcepts: ConfirmedConcept[] = [];
+                for (const concept of concepts) {
+                    const result = await this.conceptRegistry.registerOrMatch(
+                        concept.name,
+                        concept.reason
+                    );
+                    confirmedConcepts.push({
+                        name: result.concept,
+                        isNew: result.isNew,
+                        createPage: false,
+                    });
+                }
+
+                // Save to frontmatter
+                const conceptNames = confirmedConcepts.map(c => c.name);
+                await this.frontmatterService.setConcepts(pendingFile, conceptNames);
+
+                // Update indexed_at timestamp
+                await this.frontmatterService.setIndexedAt(pendingFile);
+
                 console.log('[MemoEcho] Concepts applied:', concepts.length);
             } catch (error) {
                 console.error('[MemoEcho] Failed to apply concepts:', error);
@@ -605,26 +648,32 @@ export default class MemoEchoPlugin extends Plugin {
                         continue;
                     }
 
-                    const confirmedConcepts: ConfirmedConcept[] = group.concepts.map(c => ({
-                        name: c.matchInfo.matchedConcept,
-                        isNew: c.matchInfo.matchType === 'new',
-                        createPage: false,
-                        aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
-                    }));
+                    const confirmedConcepts: ConfirmedConcept[] = [];
+                    for (const c of group.concepts) {
+                        const result = await this.conceptRegistry.registerOrMatch(
+                            c.matchInfo.matchedConcept,
+                            c.reason
+                        );
+                        confirmedConcepts.push({
+                            name: result.concept,
+                            isNew: result.isNew,
+                            createPage: false,
+                            aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
+                        });
+                    }
 
-                    await this.conceptExtractionPipeline.apply(file, confirmedConcepts);
+                    // Save to frontmatter
+                    const conceptNames = confirmedConcepts.map(c => c.name);
+                    await this.frontmatterService.setConcepts(file, conceptNames);
+
+                    // Update indexed_at timestamp
+                    await this.frontmatterService.setIndexedAt(file);
+
                     appliedCount++;
                     conceptCount += confirmedConcepts.length;
                 }
 
                 new Notice(`✅ 已应用 ${conceptCount} 个概念到 ${appliedCount} 个文件`);
-
-                // Refresh associations after batch apply
-                if (this.conceptView) {
-                    console.log('[MemoEcho] Refreshing associations after batch apply...');
-                    await this.conceptView.refreshAssociations({ scan: true });
-                    console.log('[MemoEcho] Associations refreshed successfully');
-                }
 
                 console.log('[MemoEcho] Batch concepts applied:', appliedCount, 'files,', conceptCount, 'concepts');
             } catch (error) {
@@ -647,14 +696,26 @@ export default class MemoEchoPlugin extends Plugin {
                     return;
                 }
 
-                const confirmedConcepts: ConfirmedConcept[] = group.concepts.map(c => ({
-                    name: c.matchInfo.matchedConcept,
-                    isNew: c.matchInfo.matchType === 'new',
-                    createPage: false,
-                    aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
-                }));
+                const confirmedConcepts: ConfirmedConcept[] = [];
+                for (const c of group.concepts) {
+                    const result = await this.conceptRegistry.registerOrMatch(
+                        c.matchInfo.matchedConcept,
+                        c.reason
+                    );
+                    confirmedConcepts.push({
+                        name: result.concept,
+                        isNew: result.isNew,
+                        createPage: false,
+                        aliases: c.matchInfo.matchType === 'alias' ? [c.matchInfo.originalTerm] : undefined,
+                    });
+                }
 
-                await this.conceptExtractionPipeline.apply(file, confirmedConcepts);
+                // Save to frontmatter
+                const conceptNames = confirmedConcepts.map(c => c.name);
+                await this.frontmatterService.setConcepts(file, conceptNames);
+
+                // Update indexed_at timestamp
+                await this.frontmatterService.setIndexedAt(file);
 
                 new Notice(`✅ 已应用 ${confirmedConcepts.length} 个概念`);
 
@@ -686,7 +747,7 @@ export default class MemoEchoPlugin extends Plugin {
      * Setup paragraph detector for auto-recommendations
      */
     private setupParagraphDetector() {
-        this.paragraphDetector = new ParagraphDetector({
+        const detector = new ParagraphDetector({
             minChars: 100,
             debounceMs: 1000,
             onParagraphComplete: async (event) => {
@@ -703,12 +764,12 @@ export default class MemoEchoPlugin extends Plugin {
                 const content = editor.getValue();
                 const cursor = editor.getCursor();
                 const cursorPos = editor.posToOffset(cursor);
-
-                if (this.paragraphDetector) {
-                    this.paragraphDetector.onContentChange(content, cursorPos);
-                }
+                detector.onContentChange(content, cursorPos);
             })
         );
+
+        // Store reference for cleanup
+        (this as any)._paragraphDetector = detector;
     }
 
     /**

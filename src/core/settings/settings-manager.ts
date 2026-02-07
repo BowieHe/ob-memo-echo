@@ -8,15 +8,12 @@ import type { SettingsUpdateResult, SettingsContext, ServiceUpdaters } from './t
 import { EmbeddingSettingsHandler } from './settings-handlers';
 import { LlmSettingsHandler } from './settings-handlers';
 import { ConceptExtractionSettingsHandler } from './settings-handlers';
-import { AssociationSettingsHandler } from './settings-handlers';
 import { ConceptFESettingsHandler } from './settings-handlers';
 import { ConceptSkipSettingsHandler } from './settings-handlers';
 import type { BaseModelConfig } from '../types/setting';
 import type { ConceptExtractionConfig } from '../types/setting';
 import type { ConceptFEConfig } from '../types/setting';
 import type { ConceptSkipConfig } from '../types/setting';
-import type { AssociationConfig as EngineAssociationConfig } from '../types/association';
-import type { UIAssociationConfig } from './types';
 
 /**
  * SettingsManager - Encapsulates all settings update logic
@@ -54,7 +51,6 @@ export class SettingsManager {
         this.handlers.set('embedding', new EmbeddingSettingsHandler(serviceUpdaters.embedding));
         this.handlers.set('llm', new LlmSettingsHandler(serviceUpdaters.llm));
         this.handlers.set('conceptExtraction', new ConceptExtractionSettingsHandler(serviceUpdaters.conceptExtraction));
-        this.handlers.set('association', new AssociationSettingsHandler(serviceUpdaters.uiAssociation));
         this.handlers.set('conceptFE', new ConceptFESettingsHandler(serviceUpdaters.conceptFE));
         this.handlers.set('conceptSkip', new ConceptSkipSettingsHandler(serviceUpdaters.conceptSkip));
     }
@@ -80,13 +76,6 @@ export class SettingsManager {
      */
     async updateConceptExtraction(config: Partial<ConceptExtractionConfig>): Promise<SettingsUpdateResult> {
         return this.updateGroup('conceptExtraction', this.settings.conceptExtraction, config);
-    }
-
-    /**
-     * Update association configuration
-     */
-    async updateAssociation(config: Partial<UIAssociationConfig>): Promise<SettingsUpdateResult> {
-        return this.updateGroup('association', this.settings.association, config);
     }
 
     /**

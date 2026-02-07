@@ -1,31 +1,31 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
-import { VectorIndexManager } from '../services/vector-index-manager';
-import type { SearchResult } from '../services/vector-backend';
+import { SearchService } from '../services/search-service';
+import type { SearchResult } from '../services/search-service';
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Sidebar } from '../components/Sidebar';
 import { VIEW_TYPE_INDEX_SEARCH } from '../core/constants';
 
 /**
- * UnifiedSearchView - Combines Search and Recommendation functionality
- * 
+ * IndexSearchView - Search and display related notes
+ *
  * Behavior:
- * - When search box is empty: Shows ambient recommendations (auto-updates on paragraph changes)
+ * - When search box is empty: Shows related notes (concept/summary/title based)
  * - When search box has content: Shows search results
  */
 export class IndexSearchView extends ItemView {
-    private indexManager: VectorIndexManager;
+    private searchService: SearchService;
     private onIndexCurrentFile: () => Promise<void>;
     private container!: HTMLElement;
     private root: Root | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
-        indexManager: VectorIndexManager,
+        searchService: SearchService,
         onIndexCurrentFile: () => Promise<void>,
     ) {
         super(leaf);
-        this.indexManager = indexManager;
+        this.searchService = searchService;
         this.onIndexCurrentFile = onIndexCurrentFile;
     }
 
@@ -59,7 +59,7 @@ export class IndexSearchView extends ItemView {
         this.root = createRoot(this.container);
         this.root.render(
             React.createElement(Sidebar, {
-                indexManager: this.indexManager,
+                searchService: this.searchService,
                 initialMode: 'ambient', // Start with ambient mode (empty search)
                 onIndexCurrent: this.handleIndexCurrentFile,
             })
@@ -86,9 +86,9 @@ export class IndexSearchView extends ItemView {
      */
     private handleOpenFile = (event: WindowEventMap['memo-echo:open-file']) => {
         const result = event.detail;
-        if (!result || !result.metadata.filePath) return;
+        if (!result || !result.notePath) return;
 
-        void this.jumpToResult(result);
+        void this.openNote(result.notePath);
     };
 
     /**
@@ -97,46 +97,29 @@ export class IndexSearchView extends ItemView {
      */
     async updateRecommendations(paragraph: string): Promise<void> {
         try {
-            // Search for similar content
-            const results = await this.indexManager.search(paragraph, { limit: 5 });
+            // Search for similar content using SearchService
+            const results = await this.searchService.search(paragraph, undefined, 5);
 
             // Dispatch event for React component to update ambient results
             window.dispatchEvent(new CustomEvent('memo-echo:ambient-update', {
                 detail: results
             }));
         } catch (error) {
-            console.error('[UnifiedSearchView] Failed to get recommendations:', error);
+            console.error('[IndexSearchView] Failed to get recommendations:', error);
         }
     }
 
     /**
-     * Jump to search result
+     * Open note in workspace
      */
-    private async jumpToResult(result: SearchResult): Promise<void> {
-        const filePath = result.metadata.filePath;
-        const startLine = result.metadata.start_line || 0;
-
-        if (!filePath) return;
+    private async openNote(notePath: string): Promise<void> {
+        if (!notePath) return;
 
         // Open file
-        const file = this.app.vault.getAbstractFileByPath(filePath);
+        const file = this.app.vault.getAbstractFileByPath(notePath);
         if (!file) return;
 
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(file as any);
-
-        // Jump to specific line if available
-        const view = leaf.view as any;
-        if (view.editor && startLine > 0) {
-            const editor = view.editor;
-            editor.setCursor({ line: startLine - 1, ch: 0 });
-
-            // Scroll to the target line
-            const endLine = result.metadata.end_line || startLine;
-            editor.scrollIntoView({
-                from: { line: startLine - 1, ch: 0 },
-                to: { line: endLine, ch: 0 }
-            }, true);
-        }
     }
 }

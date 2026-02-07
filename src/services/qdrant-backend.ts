@@ -15,17 +15,25 @@ import { generateUUID } from '@utils/uuid';
 import { Notice } from 'obsidian';
 import type { ConceptPayload } from '@core/types/concept-registry';
 
+// Minimal interface for embedding service dimension access
+interface EmbeddingServiceDimension {
+    getDimension(): number;
+}
+
 export class QdrantBackend implements VectorBackend {
     private client: QdrantClient;
     private collectionName: string;
+    private qdrantUrl: string;
     private vectorSize: number | null = null;
 
     constructor(
         collectionName: string = 'obsidian_notes',
-        qdrantUrl: string = 'http://localhost:6333'
+        qdrantUrl: string = 'http://localhost:6333',
+        private embeddingService?: EmbeddingServiceDimension
     ) {
         this.client = new QdrantClient({ url: qdrantUrl });
         this.collectionName = collectionName;
+        this.qdrantUrl = qdrantUrl;
     }
 
     async initialize(): Promise<void> {
@@ -61,24 +69,42 @@ export class QdrantBackend implements VectorBackend {
     }
 
     private async ensureCollection(dimension: number): Promise<void> {
+        console.log(`[Qdrant] ensureCollection called with dimension: ${dimension}`);
+
         try {
             const collection = await this.client.getCollection(this.collectionName);
-            console.log('[Qdrant] Collection exists:', collection.config);
-        } catch (error) {
-            console.log(`[Qdrant] Creating collection with Named Vectors, dimension ${dimension}`);
-            await this.client.createCollection(this.collectionName, {
-                vectors: {
-                    // Chunk vectors
-                    [VECTOR_NAMES.CONTENT]: { size: dimension, distance: 'Cosine' },
-                    [VECTOR_NAMES.SUMMARY]: { size: dimension, distance: 'Cosine' },
-                    [VECTOR_NAMES.TITLE]: { size: dimension, distance: 'Cosine' },
-                    // Concept vectors (v0.7.0+)
-                    concept_vec: { size: dimension, distance: 'Cosine' },
-                    concept_summary_vec: { size: dimension, distance: 'Cosine' },
-                },
-            });
-            console.log('[Qdrant] Collection created successfully');
+            console.log('[Qdrant] Collection exists:', collection.config?.params?.vectors);
+        } catch (error: any) {
+            // Collection doesn't exist, try to create it
+            console.log(`[Qdrant] Collection doesn't exist, creating with Named Vectors, dimension ${dimension}`);
+            try {
+                await this.client.createCollection(this.collectionName, {
+                    vectors: {
+                        // Chunk vectors
+                        [VECTOR_NAMES.CONTENT]: { size: dimension, distance: 'Cosine' },
+                        [VECTOR_NAMES.SUMMARY]: { size: dimension, distance: 'Cosine' },
+                        [VECTOR_NAMES.TITLE]: { size: dimension, distance: 'Cosine' },
+                        // Concept vectors (v0.7.0+)
+                        concept_vec: { size: dimension, distance: 'Cosine' },
+                        concept_summary_vec: { size: dimension, distance: 'Cosine' },
+                    },
+                });
+                console.log('[Qdrant] Collection created successfully');
+            } catch (createError: any) {
+                console.error('[Qdrant] Failed to create collection:', createError);
+                // Better error message for connection issues
+                if (createError?.message?.includes('ECONNREFUSED') ||
+                    createError?.message?.includes('Connection refused') ||
+                    createError?.message?.includes('Failed to fetch') ||
+                    createError?.message?.includes('ERR_CONNECTION_REFUSED')) {
+                    throw new Error(`无法连接到 Qdrant 服务 (${this.qdrantUrl})。请确保 Qdrant 正在运行。`);
+                }
+                // Throw the original error with more context
+                throw new Error(`Failed to create collection: ${createError?.message || createError}`);
+            }
         }
+
+        console.log(`[Qdrant] ensureCollection completed for collection: ${this.collectionName}`);
     }
 
     async searchWithFusion(
@@ -236,57 +262,80 @@ export class QdrantBackend implements VectorBackend {
         conceptVector: number[],
         summaryVector: number[]
     ): Promise<void> {
-        // Ensure collection exists with concept vectors
+        console.log(`[Qdrant] upsertConcept called for: "${concept}", vector dimension: ${conceptVector.length}`);
+
+        // Always ensure collection exists before upserting
+        // Store vectorSize for future use
         if (this.vectorSize === null) {
             this.vectorSize = conceptVector.length;
-            await this.ensureCollection(this.vectorSize);
         }
+        await this.ensureCollection(this.vectorSize);
 
-        const id = `concept|${concept}`;
         const now = new Date().toISOString();
 
         // Check if concept already exists
+        console.log(`[Qdrant] Checking if concept "${concept}" exists...`);
         const existing = await this.getConcept(concept);
 
         if (existing) {
+            console.log(`[Qdrant] Concept "${concept}" exists, updating...`);
+            // Use existing point ID for update
+            const id = existing.id;
             // Update existing concept
-            await this.client.upsert(this.collectionName, {
-                points: [{
-                    id,
-                    vector: {
-                        concept_vec: conceptVector,
-                        concept_summary_vec: summaryVector,
-                    },
-                    payload: {
-                        ...existing,
-                        summary,
-                        link,
-                        lastUsedAt: now,
-                    } as ConceptPayload,
-                }],
-            });
-            console.log(`[Qdrant] Updated concept: ${concept}`);
+            try {
+                await this.client.upsert(this.collectionName, {
+                    points: [{
+                        id,
+                        vector: {
+                            concept_vec: conceptVector,
+                            concept_summary_vec: summaryVector,
+                        },
+                        payload: {
+                            ...existing.payload,
+                            summary,
+                            link,
+                            lastUsedAt: now,
+                        } as ConceptPayload,
+                    }],
+                });
+                console.log(`[Qdrant] Updated concept: ${concept}`);
+            } catch (error: any) {
+                console.error(`[Qdrant] Failed to update concept "${concept}":`, error);
+                throw new Error(`Failed to update concept "${concept}": ${error?.message || error}`);
+            }
         } else {
+            console.log(`[Qdrant] Concept "${concept}" is new, creating...`);
+            // Generate new UUID for new concept
+            const id = generateUUID();
             // Create new concept
-            await this.client.upsert(this.collectionName, {
-                points: [{
-                    id,
-                    vector: {
-                        concept_vec: conceptVector,
-                        concept_summary_vec: summaryVector,
-                    },
-                    payload: {
-                        type: 'concept',
-                        concept,
-                        summary,
-                        link,
-                        noteCount: 1,
-                        firstSeenAt: now,
-                        lastUsedAt: now,
-                    } as ConceptPayload,
-                }],
-            });
-            console.log(`[Qdrant] Created concept: ${concept}`);
+            try {
+                await this.client.upsert(this.collectionName, {
+                    points: [{
+                        id,
+                        vector: {
+                            concept_vec: conceptVector,
+                            concept_summary_vec: summaryVector,
+                        },
+                        payload: {
+                            type: 'concept',
+                            concept,
+                            summary,
+                            link,
+                            noteCount: 1,
+                            firstSeenAt: now,
+                            lastUsedAt: now,
+                        } as ConceptPayload,
+                    }],
+                });
+                console.log(`[Qdrant] Created concept: ${concept}`);
+            } catch (error: any) {
+                console.error(`[Qdrant] Failed to create concept "${concept}":`, error);
+                // Provide more helpful error message
+                if (error?.message?.includes('Not found')) {
+                    throw new Error(`Collection not found. Please try restarting the plugin or check Qdrant configuration.`);
+                }
+                throw new Error(`Failed to create concept "${concept}": ${error?.message || error}`);
+            }
         }
     }
 
@@ -415,13 +464,14 @@ export class QdrantBackend implements VectorBackend {
 
     /**
      * Get a single concept by name
+     * Returns both payload and point ID (needed for updates)
      */
-    async getConcept(concept: string): Promise<ConceptPayload | null> {
+    async getConcept(concept: string): Promise<{ payload: ConceptPayload; id: string } | null> {
         try {
             const results = await this.client.search(this.collectionName, {
                 vector: {
                     name: 'concept_vec',
-                    vector: new Array(768).fill(0), // Placeholder vector (not used for filtering)
+                    vector: new Array((this.embeddingService?.getDimension() ?? 768)).fill(0), // Placeholder vector (not used for filtering)
                 },
                 limit: 1,
                 with_payload: true,
@@ -440,7 +490,10 @@ export class QdrantBackend implements VectorBackend {
             const pointsArray = Array.isArray(points) ? points : [points];
 
             if (pointsArray.length > 0) {
-                return pointsArray[0].payload as unknown as ConceptPayload;
+                return {
+                    payload: pointsArray[0].payload as unknown as ConceptPayload,
+                    id: pointsArray[0].id as string
+                };
             }
             return null;
         } catch (error) {
@@ -487,19 +540,19 @@ export class QdrantBackend implements VectorBackend {
             const now = new Date().toISOString();
             await this.client.upsert(this.collectionName, {
                 points: [{
-                    id: `concept|${concept}`,
+                    id: existing.id,  // Use existing point ID
                     vector: {
                         concept_vec: conceptVector,
                         concept_summary_vec: summaryVector,
                     },
                     payload: {
-                        ...existing,
-                        noteCount: existing.noteCount + 1,
+                        ...existing.payload,
+                        noteCount: existing.payload.noteCount + 1,
                         lastUsedAt: now,
                     } as ConceptPayload,
                 }],
             });
-            console.log(`[Qdrant] Updated concept usage: ${concept} (count: ${existing.noteCount + 1})`);
+            console.log(`[Qdrant] Updated concept usage: ${concept} (count: ${existing.payload.noteCount + 1})`);
         } catch (error) {
             console.error('[Qdrant] Update concept usage with vectors failed:', error);
         }

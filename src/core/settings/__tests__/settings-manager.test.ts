@@ -1,5 +1,6 @@
 /**
  * SettingsManager Unit Tests
+ * v0.7.0: Removed association-related tests
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -11,7 +12,6 @@ import {
     DEFAULT_CONCEPT_EXTRACTION_CONFIG,
     DEFAULT_CONCEPT_FE_CONFIG,
     DEFAULT_CONCEPT_SKIP_CONFIG,
-    DEFAULT_ASSOCIATION_CONFIG,
 } from '../../types/setting';
 import type { ServiceUpdaters } from '../types';
 
@@ -33,11 +33,6 @@ const mockSettings: MemoEchoSettings = {
     // Other concept settings
     enableConceptExtraction: true,
 
-    // Association config
-    association: { ...DEFAULT_ASSOCIATION_CONFIG },
-    associationIgnoredAssociations: [],
-    associationDeletedConcepts: {},
-
 };
 
 // Mock service updaters
@@ -45,11 +40,9 @@ const mockServiceUpdaters: ServiceUpdaters = {
     embedding: vi.fn(),
     llm: vi.fn(),
     conceptExtraction: vi.fn(),
-    association: vi.fn(),
     conceptExtractionSettings: vi.fn(),
     conceptFE: vi.fn(),
     conceptSkip: vi.fn(),
-    uiAssociation: vi.fn(),
 };
 
 const mockSaveSettings = vi.fn();
@@ -68,7 +61,6 @@ describe('SettingsManager', () => {
         mockSettings.conceptExtraction = { ...DEFAULT_CONCEPT_EXTRACTION_CONFIG };
         mockSettings.conceptFE = { ...DEFAULT_CONCEPT_FE_CONFIG };
         mockSettings.conceptSkip = { ...DEFAULT_CONCEPT_SKIP_CONFIG };
-        mockSettings.association = { ...DEFAULT_ASSOCIATION_CONFIG };
 
         // Create new SettingsManager instance
         settingsManager = new SettingsManager(
@@ -174,31 +166,6 @@ describe('SettingsManager', () => {
 
             expect(result.success).toBe(false);
             expect(result.errors?.[0].field).toBe('minConfidence');
-        });
-    });
-
-    describe('Association Settings', () => {
-        it('should update and initialize association config', async () => {
-            const result = await settingsManager.updateAssociation({
-                associationMinConfidence: 0.7,
-                associationAutoAccept: true,
-                associationAutoAcceptConfidence: 0.95,
-                associationAutoScanBatchSize: 100,
-            });
-
-            expect(result.success).toBe(true);
-            expect(mockSettings.association.associationMinConfidence).toBe(0.7);
-            expect(mockSettings.association.associationAutoAccept).toBe(true);
-            expect(mockSaveSettings).toHaveBeenCalled();
-        });
-
-        it('should validate associationMinConfidence range', async () => {
-            const result = await settingsManager.updateAssociation({
-                associationMinConfidence: 1.5,
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.errors?.[0].field).toBe('associationMinConfidence');
         });
     });
 

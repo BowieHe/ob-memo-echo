@@ -1,22 +1,20 @@
 /**
  * Settings Tab - Refactored with indexing features
+ * v0.7.0: Removed association-related settings
  */
 
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { buildAssociationExport } from '../services/association-exporter';
 import type MemoEchoPlugin from '../main';
 import {
     BaseModelConfig,
     ConceptExtractionConfig,
     ConceptFEConfig,
     ConceptSkipConfig,
-    AssociationConfig,
     DEFAULT_EMBEDDING_CONFIG,
     DEFAULT_LLM_CONFIG,
     DEFAULT_CONCEPT_EXTRACTION_CONFIG,
     DEFAULT_CONCEPT_FE_CONFIG,
     DEFAULT_CONCEPT_SKIP_CONFIG,
-    DEFAULT_ASSOCIATION_CONFIG,
 } from '@core/types/setting';
 import { getErrorMessage } from '@utils/error';
 
@@ -34,11 +32,6 @@ export interface MemoEchoSettings {
     conceptExtraction: ConceptExtractionConfig;
     conceptFE: ConceptFEConfig;
     conceptSkip: ConceptSkipConfig;
-
-    // Association config (使用配置对象)
-    association: AssociationConfig;
-    associationIgnoredAssociations: string[];
-    associationDeletedConcepts: Record<string, string[]>;
 }
 
 export const DEFAULT_SETTINGS: MemoEchoSettings = {
@@ -57,11 +50,6 @@ export const DEFAULT_SETTINGS: MemoEchoSettings = {
 
     // Other concept settings
     enableConceptExtraction: true,
-
-    // Association config
-    association: DEFAULT_ASSOCIATION_CONFIG,
-    associationIgnoredAssociations: [],
-    associationDeletedConcepts: {},
 
 };
 
@@ -115,11 +103,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
 
         const dbStatsCard = overviewGrid.createDiv('overview-card');
         this.updateStats(dbStatsCard);
-
-        const associationCard = overviewGrid.createDiv('overview-card');
-        associationCard.createEl('h4', { text: '关联统计' });
-        const associationContainer = associationCard.createDiv('association-stats');
-        this.updateAssociationStats(associationContainer);
     }
 
     private addEnvironmentSection(containerEl: HTMLElement): void {
@@ -612,10 +595,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.conceptFE.conceptPagePrefix)
                     .onChange(async (value) => {
                         const prefix = value || '_me';
-                        // Note: conceptPagePrefix update also affects conceptSkip.conceptDictionaryPath
-                        // This requires special handling since it modifies two settings groups
                         this.plugin.settings.conceptFE.conceptPagePrefix = prefix;
-                        this.plugin.settings.conceptSkip.conceptDictionaryPath = `${prefix}/_concept-dictionary.json`;
                         await this.plugin.saveSettings();
                         this.plugin.updateConceptExtractionSettings();
                     }));
@@ -771,129 +751,6 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                             new Notice(`❌ 清除失败: ${getErrorMessage(error)}`);
                         }
                     }));
-
-            // v0.6.0: Association management settings
-            containerEl.createEl('h4', { text: '关联发现' });
-
-            const associationGroup = containerEl.createDiv('memo-echo-settings-group');
-
-            const statsContainer = associationGroup.createDiv('association-stats');
-            this.updateAssociationStats(statsContainer);
-
-            new Setting(associationGroup)
-                .setName('自动接受高质量关联')
-                .setDesc('高置信度自动写入')
-                .addToggle(toggle => toggle
-                    .setValue(this.plugin.settings.association.associationAutoAccept)
-                    .onChange(async (value) => {
-                        const result = await this.plugin.settingsManager.updateAssociation({ associationAutoAccept: value });
-                        if (!result.success) {
-                            new Notice(`❌ 更新失败: ${result.errors?.[0]?.message}`);
-                        }
-                    }));
-
-            new Setting(associationGroup)
-                .setName('高级选项')
-                .setDesc('阈值与批量采用默认值');
-
-            new Setting(associationGroup)
-                .setName('重置忽略列表')
-                .setDesc('清空所有已忽略的关联')
-                .addButton(button => button
-                    .setButtonText('重置忽略')
-                    .onClick(async () => {
-                        await this.plugin.associationPreferences.clearIgnoredAssociations();
-                        new Notice('✅ 已清空忽略列表');
-                    }));
-
-            new Setting(associationGroup)
-                .setName('重置删除概念')
-                .setDesc('清空所有已删除的共享概念')
-                .addButton(button => button
-                    .setButtonText('重置删除')
-                    .onClick(async () => {
-                        await this.plugin.associationPreferences.clearDeletedConcepts();
-                        new Notice('✅ 已清空删除概念');
-                    }));
-
-
-            // v0.6.0: Rescan associations button
-            new Setting(associationGroup)
-                .setName('重新扫描关联')
-                .setDesc('清除关联索引并重新发现笔记间的关联')
-                .addButton(button => button
-                    .setButtonText('重新扫描')
-                    .setCta()
-                    .onClick(async () => {
-                        try {
-                            new Notice('🔄 正在扫描关联...');
-
-                            // Clear existing index
-                            this.plugin.associationEngine.clearIndex();
-
-                            // Re-index all markdown files (limit for performance)
-                            const limit = Math.max(10, this.plugin.settings.association.associationAutoScanBatchSize || 50);
-                            const files = this.app.vault.getMarkdownFiles().slice(0, limit);
-                            let indexed = 0;
-
-                            for (const file of files) {
-                                try {
-                                    const content = await this.app.vault.read(file);
-                                    await this.plugin.associationEngine.indexNote(file.path, content, file.basename);
-                                    indexed++;
-                                } catch (e) {
-                                    // Skip files with errors
-                                }
-                            }
-
-                            // Discover associations
-                            const raw = await this.plugin.associationEngine.discoverAssociations();
-                            const filtered = this.plugin.associationPreferences.filterAssociations(raw)
-                                .filter((assoc) => assoc.confidence >= this.plugin.settings.association.associationMinConfidence);
-
-                            new Notice(`✅ 已索引 ${indexed} 个笔记，发现 ${filtered.length} 个关联`);
-
-                            // Refresh stats display
-                            this.updateAssociationStats(statsContainer);
-                        } catch (error) {
-                            new Notice(`❌ 扫描失败: ${getErrorMessage(error)}`);
-                        }
-                    }));
-
-            // v0.6.0: Export association stats
-            new Setting(associationGroup)
-                .setName('导出关联统计')
-                .setDesc('导出当前关联统计和索引概览')
-                .addButton(button => button
-                    .setButtonText('导出统计')
-                    .onClick(async () => {
-                        try {
-                            const stats = this.plugin.associationEngine.getStats();
-                            const raw = await this.plugin.associationEngine.discoverAssociations();
-                            const filtered = this.plugin.associationPreferences.filterAssociations(raw)
-                                .filter((assoc) => assoc.confidence >= this.plugin.settings.association.associationMinConfidence);
-
-                            const payload = buildAssociationExport(filtered, stats, {
-                                filteredBy: `minConfidence:${this.plugin.settings.association.associationMinConfidence}`,
-                            });
-
-                            const fileName = `memo-echo-association-export-${Date.now()}.json`;
-                            await this.app.vault.create(fileName, JSON.stringify(payload, null, 2));
-                            new Notice(`✅ 已导出统计和关联到 ${fileName}`);
-                        } catch (error) {
-                            new Notice(`❌ 导出失败: ${getErrorMessage(error)}`);
-                        }
-                    }));
-
-            // v0.6.0: Open association panel button
-            new Setting(associationGroup)
-                .setName('打开关联面板')
-                .setDesc('在侧边栏查看和管理关联建议')
-                .addButton(button => button
-                    .setButtonText('打开面板')
-                    .onClick(() => {
-                        this.plugin.activateAssociationView();
-                    }));
         }
     }
 
@@ -953,33 +810,4 @@ export class MemoEchoSettingTab extends PluginSettingTab {
         }
     }
 
-    // v0.6.0: Update association statistics display
-    private updateAssociationStats(container: HTMLElement): void {
-        container.empty();
-
-        try {
-            const stats = this.plugin.associationEngine.getStats();
-
-            const statsContent = container.createDiv('stats-content');
-
-            const row1 = statsContent.createDiv('stat-row');
-            row1.createEl('span', { text: '已索引笔记: ' });
-            row1.createEl('strong', { text: stats.totalNotes.toString() });
-            row1.createEl('span', { text: ' | ' });
-            row1.createEl('span', { text: '唯一概念: ' });
-            row1.createEl('strong', { text: stats.totalConcepts.toString() });
-
-            const row2 = statsContent.createDiv('stat-row');
-            row2.createEl('span', { text: '发现关联: ' });
-            row2.createEl('strong', { text: stats.totalAssociations.toString() });
-            row2.createEl('span', { text: ' | ' });
-            row2.createEl('span', { text: '平均概念/笔记: ' });
-            row2.createEl('strong', { text: stats.avgConceptsPerNote.toFixed(1) });
-        } catch (error) {
-            container.createEl('p', {
-                text: `无法获取关联统计: ${getErrorMessage(error)}`,
-                cls: 'error-text',
-            });
-        }
-    }
 }

@@ -34,7 +34,7 @@ interface QdrantBackendConceptMethods {
     ): Promise<Array<{ id: string; score: number; payload: ConceptRecord }>>;
     scrollConcepts(options?: { limit?: number; offset?: string }):
         Promise<{ points: Array<{ payload: ConceptRecord }>; nextPage: string | null }>;
-    getConcept(concept: string): Promise<ConceptRecord | null>;
+    getConcept(concept: string): Promise<{ payload: ConceptRecord; id: string } | null>;
     updateConceptUsageWithVectors(
         concept: string,
         conceptVector: number[],
@@ -68,23 +68,44 @@ export class ConceptRegistry {
         conceptName: string,
         reason: string
     ): Promise<ConceptMatchResult> {
+        console.log(`[ConceptRegistry] Registering concept: "${conceptName}"`);
+
         // 1. Generate vectors
-        const conceptVector = await this.embeddingService.embed(conceptName);
-        const summaryVector = await this.embeddingService.embed(reason);
+        let conceptVector: number[];
+        let summaryVector: number[];
+        try {
+            conceptVector = await this.embeddingService.embed(conceptName);
+            summaryVector = await this.embeddingService.embed(reason);
+            console.log(`[ConceptRegistry] Vectors generated for "${conceptName}"`);
+        } catch (error) {
+            console.error(`[ConceptRegistry] Failed to generate embeddings for "${conceptName}":`, error);
+            throw new Error(`Failed to generate embeddings for concept "${conceptName}": ${error}`);
+        }
 
         // 2. Try strict matching first (using only concept_vec)
-        const strictMatches = await this.qdrant.searchSimilarConceptsStrict(
-            conceptVector,
-            { limit: 1, scoreThreshold: 0.90 }
-        );
+        let strictMatches: Array<{ id: string; score: number; payload: any }> = [];
+        try {
+            strictMatches = await this.qdrant.searchSimilarConceptsStrict(
+                conceptVector,
+                { limit: 1, scoreThreshold: 0.90 }
+            );
+            console.log(`[ConceptRegistry] Strict search returned ${strictMatches.length} matches`);
+        } catch (error: any) {
+            console.warn(`[ConceptRegistry] Strict search failed (continuing):`, error?.message || error);
+        }
 
         if (strictMatches.length > 0) {
             // Found match, update usage count
-            await this.qdrant.updateConceptUsageWithVectors(
-                strictMatches[0].payload.concept,
-                conceptVector,
-                summaryVector
-            );
+            try {
+                await this.qdrant.updateConceptUsageWithVectors(
+                    strictMatches[0].payload.concept,
+                    conceptVector,
+                    summaryVector
+                );
+                console.log(`[ConceptRegistry] Matched existing concept: "${strictMatches[0].payload.concept}"`);
+            } catch (error: any) {
+                console.warn(`[ConceptRegistry] Failed to update usage count:`, error?.message || error);
+            }
             return {
                 matched: true,
                 concept: strictMatches[0].payload.concept,
@@ -95,18 +116,29 @@ export class ConceptRegistry {
         }
 
         // 3. Loose matching (fusion of both vectors)
-        const looseMatches = await this.qdrant.searchSimilarConceptsLoose(
-            conceptVector,
-            summaryVector,
-            { limit: 1, scoreThreshold: this.options.similarityThreshold }
-        );
+        let looseMatches: Array<{ id: string; score: number; payload: any }> = [];
+        try {
+            looseMatches = await this.qdrant.searchSimilarConceptsLoose(
+                conceptVector,
+                summaryVector,
+                { limit: 1, scoreThreshold: this.options.similarityThreshold }
+            );
+            console.log(`[ConceptRegistry] Loose search returned ${looseMatches.length} matches`);
+        } catch (error: any) {
+            console.warn(`[ConceptRegistry] Loose search failed (continuing):`, error?.message || error);
+        }
 
         if (looseMatches.length > 0) {
-            await this.qdrant.updateConceptUsageWithVectors(
-                looseMatches[0].payload.concept,
-                conceptVector,
-                summaryVector
-            );
+            try {
+                await this.qdrant.updateConceptUsageWithVectors(
+                    looseMatches[0].payload.concept,
+                    conceptVector,
+                    summaryVector
+                );
+                console.log(`[ConceptRegistry] Matched existing concept (loose): "${looseMatches[0].payload.concept}"`);
+            } catch (error: any) {
+                console.warn(`[ConceptRegistry] Failed to update usage count:`, error?.message || error);
+            }
             return {
                 matched: true,
                 concept: looseMatches[0].payload.concept,
@@ -117,14 +149,29 @@ export class ConceptRegistry {
         }
 
         // 4. No match, create new concept
+        console.log(`[ConceptRegistry] Creating new concept: "${conceptName}"`);
         const link = `[[${this.options.conceptPagePrefix}/${conceptName}]]`;
-        await this.qdrant.upsertConcept(
-            conceptName,
-            reason,
-            link,
-            conceptVector,
-            summaryVector
-        );
+        try {
+            await this.qdrant.upsertConcept(
+                conceptName,
+                reason,
+                link,
+                conceptVector,
+                summaryVector
+            );
+            console.log(`[ConceptRegistry] Successfully created concept: "${conceptName}"`);
+        } catch (error: any) {
+            // Check if it's a connection error
+            if (error?.message?.includes('ECONNREFUSED') ||
+                error?.message?.includes('Connection refused') ||
+                error?.message?.includes('Failed to fetch')) {
+                const errorMsg = `无法连接到 Qdrant 服务。请检查：\n1. Qdrant 是否正在运行\n2. URL 配置是否正确（当前: localhost:6333）`;
+                console.error(`[ConceptRegistry] ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
+            console.error(`[ConceptRegistry] Failed to upsert concept "${conceptName}":`, error);
+            throw error;
+        }
 
         return {
             matched: false,
@@ -171,7 +218,8 @@ export class ConceptRegistry {
      * Get single concept details
      */
     async getConcept(concept: string): Promise<ConceptRecord | null> {
-        return await this.qdrant.getConcept(concept);
+        const result = await this.qdrant.getConcept(concept);
+        return result?.payload ?? null;
     }
 
     /**
@@ -184,7 +232,7 @@ export class ConceptRegistry {
         const existing = await this.qdrant.getConcept(concept);
 
         if (existing) {
-            const summaryVector = await this.embeddingService.embed(existing.summary);
+            const summaryVector = await this.embeddingService.embed(existing.payload.summary);
             await this.qdrant.updateConceptUsageWithVectors(concept, conceptVector, summaryVector);
         }
     }

@@ -1,22 +1,13 @@
+/**
+ * ConceptConfirmPanel - React component for concept confirmation
+ * v0.7.0: Simplified to concept confirmation only (removed associations)
+ */
+
 import React, { useState, useEffect } from "react";
-import { NoteAssociation } from "@services/association-engine";
 import { ExtractedConceptWithMatch } from "@core/types/concept";
 
-export interface AssociationPanelProps {
-    associations: NoteAssociation[];
-    isLoading: boolean;
-    onAccept: (association: NoteAssociation) => Promise<void>;
-    onIgnore: (association: NoteAssociation) => void;
-    onOpenFile: (noteId: string) => void;
-    onAssociateCurrent: () => Promise<void>;
-    onAssociateAll: () => Promise<void>;
-    batchProgress?: {
-        totalFiles: number;
-        processedFiles: number;
-        totalConcepts: number;
-        isProcessing: boolean;
-    };
-    extractedConcepts?: Array<{
+export interface ConceptConfirmPanelProps {
+    extractedConcepts: Array<{
         notePath: string;
         noteTitle: string;
         concepts: ExtractedConceptWithMatch[];
@@ -29,7 +20,6 @@ export interface AssociationPanelProps {
         }>,
     ) => Promise<void>;
     onClearConcepts: () => void;
-    // Per-item concept action callbacks
     onRejectConcept?: (conceptName: string, notePath: string) => void;
     onApplySingleConcept?: (group: {
         notePath: string;
@@ -37,24 +27,27 @@ export interface AssociationPanelProps {
         concepts: ExtractedConceptWithMatch[];
     }) => Promise<void>;
     isBatchProcessing: boolean;
+    batchProgress?: {
+        totalFiles: number;
+        processedFiles: number;
+        totalConcepts: number;
+        isProcessing: boolean;
+    };
+    onAssociateCurrent: () => Promise<void>;
+    onAssociateAll: () => Promise<void>;
     onStopBatch: () => void;
 }
 
-export const AssociationPanel: React.FC<AssociationPanelProps> = ({
-    associations,
-    isLoading,
-    onAccept,
-    onIgnore,
-    onOpenFile,
-    onAssociateCurrent,
-    onAssociateAll,
-    batchProgress,
+export const ConceptConfirmPanel: React.FC<ConceptConfirmPanelProps> = ({
     extractedConcepts,
     onApplyConcepts,
     onClearConcepts,
     onRejectConcept,
     onApplySingleConcept,
     isBatchProcessing,
+    batchProgress,
+    onAssociateCurrent,
+    onAssociateAll,
     onStopBatch,
 }) => {
     const handleApplySingleConceptWrapper = async (
@@ -62,12 +55,11 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
         notePath: string,
     ) => {
         if (onApplySingleConcept) {
-            // Use the dedicated single-concept handler
             const group = extractedConcepts?.find(
                 (g) => g.notePath === notePath,
             );
             const concept = group?.concepts.find(
-                (c: any) => c.name === conceptName,
+                (c: ExtractedConceptWithMatch) => c.name === conceptName,
             );
             if (group && concept) {
                 await onApplySingleConcept({
@@ -77,12 +69,12 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                 });
             }
         } else {
-            // Fallback to batch apply (triggers full refresh)
+            // Fallback to batch apply
             const group = extractedConcepts?.find(
                 (g) => g.notePath === notePath,
             );
             const concept = group?.concepts.find(
-                (c: any) => c.name === conceptName,
+                (c: ExtractedConceptWithMatch) => c.name === conceptName,
             );
             if (concept && group) {
                 await onApplyConcepts([
@@ -102,17 +94,18 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
     ) => {
         onRejectConcept?.(conceptName, notePath);
     };
+
     return (
         <div className="memo-echo-association-panel">
             {/* Header */}
             <div className="memo-echo-panel-header">
-                <h3>🔗 关联建议</h3>
+                <h3>💡 概念确认</h3>
                 <div className="memo-echo-concept-actions">
                     <button
                         className="memo-echo-icon-btn"
                         onClick={onAssociateCurrent}
-                        disabled={isLoading || isBatchProcessing}
-                        title="提取当前页面的概念和创建关联"
+                        disabled={isBatchProcessing}
+                        title="提取当前页面的概念"
                     >
                         📄
                     </button>
@@ -121,11 +114,10 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                         onClick={
                             isBatchProcessing ? onStopBatch : onAssociateAll
                         }
-                        disabled={isLoading}
                         title={
                             isBatchProcessing
                                 ? "停止批量提取"
-                                : "批量提取所有页面的概念和创建关联"
+                                : "批量提取所有页面的概念"
                         }
                     >
                         {isBatchProcessing ? "🛑" : "📚"}
@@ -133,22 +125,12 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                 </div>
             </div>
 
-            {/* 进度条 */}
+            {/* Progress Bar */}
             {batchProgress?.isProcessing && (
                 <BatchProgressBar progress={batchProgress} />
             )}
 
-            {/* 关联列表 */}
-            {associations && associations.length > 0 && (
-                <AssociationList
-                    associations={associations}
-                    onAccept={onAccept}
-                    onIgnore={onIgnore}
-                    onOpenFile={onOpenFile}
-                />
-            )}
-
-            {/* 概念列表 */}
+            {/* Concept List */}
             {extractedConcepts && extractedConcepts.length > 0 && (
                 <ConceptListInline
                     concepts={extractedConcepts}
@@ -159,12 +141,12 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
                 />
             )}
 
-            {/* 空状态 */}
-            {!isLoading &&
+            {/* Empty State */}
+            {!isBatchProcessing &&
                 !batchProgress?.isProcessing &&
                 (!extractedConcepts || extractedConcepts.length === 0) && (
                     <div className="memo-echo-empty">
-                        <p>暂无未关联的概念</p>
+                        <p>暂无新概念</p>
                         <p className="memo-echo-hint">
                             点击 📚 批量提取或 📄 提取当前笔记的概念
                         </p>
@@ -175,23 +157,22 @@ export const AssociationPanel: React.FC<AssociationPanelProps> = ({
 };
 
 /**
- * ConceptListInline - Inline concept list in AssociationPanel
+ * ConceptListInline - Inline concept list for confirmation
  */
 interface ConceptListInlineProps {
     concepts: Array<{
         notePath: string;
         noteTitle: string;
-        concepts: any[];
+        concepts: ExtractedConceptWithMatch[];
     }>;
     onApply: (
         selectedGroups: Array<{
             notePath: string;
             noteTitle: string;
-            concepts: any[];
+            concepts: ExtractedConceptWithMatch[];
         }>,
     ) => Promise<void>;
     onClear: () => void;
-    // Per-item action callbacks
     onApplySingle?: (conceptName: string, notePath: string) => Promise<void>;
     onRejectSingle?: (conceptName: string, notePath: string) => void;
 }
@@ -210,7 +191,7 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
     // Initialize selection when concepts change
     useEffect(() => {
         const allConcepts = new Set(
-            concepts.flatMap((g) => g.concepts.map((c: any) => c.name)),
+            concepts.flatMap((g) => g.concepts.map((c) => c.name)),
         );
         const allFiles = new Set(concepts.map((g) => g.notePath));
         setSelected(allConcepts);
@@ -227,16 +208,16 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
         setSelected(newSelected);
     };
 
-    const toggleFile = (notePath: string, fileConcepts: any[]) => {
+    const toggleFile = (notePath: string, fileConcepts: ExtractedConceptWithMatch[]) => {
         const newSelectedFiles = new Set(selectedFiles);
         const newSelected = new Set(selected);
 
         if (newSelectedFiles.has(notePath)) {
             newSelectedFiles.delete(notePath);
-            fileConcepts.forEach((c: any) => newSelected.delete(c.name));
+            fileConcepts.forEach((c) => newSelected.delete(c.name));
         } else {
             newSelectedFiles.add(notePath);
-            fileConcepts.forEach((c: any) => newSelected.add(c.name));
+            fileConcepts.forEach((c) => newSelected.add(c.name));
         }
 
         setSelectedFiles(newSelectedFiles);
@@ -248,7 +229,7 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
             .filter((group) => selectedFiles.has(group.notePath))
             .map((group) => ({
                 ...group,
-                concepts: group.concepts.filter((c: any) =>
+                concepts: group.concepts.filter((c) =>
                     selected.has(c.name),
                 ),
             }))
@@ -261,7 +242,7 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
 
     const handleSelectAll = () => {
         const allConcepts = new Set(
-            concepts.flatMap((g) => g.concepts.map((c: any) => c.name)),
+            concepts.flatMap((g) => g.concepts.map((c) => c.name)),
         );
         const allFiles = new Set(concepts.map((g) => g.notePath));
         setSelected(allConcepts);
@@ -339,7 +320,7 @@ const ConceptListInline: React.FC<ConceptListInlineProps> = ({
                         </label>
                     </div>
                     <div className="memo-echo-file-concepts">
-                        {group.concepts.map((concept: any) => (
+                        {group.concepts.map((concept) => (
                             <div
                                 key={concept.name}
                                 className="memo-echo-concept-item"
@@ -440,110 +421,6 @@ const BatchProgressBar: React.FC<BatchProgressBarProps> = ({ progress }) => {
                     {progress.totalConcepts} 个概念
                 </span>
             </div>
-        </div>
-    );
-};
-
-/**
- * AssociationList - List of note associations
- */
-interface AssociationListProps {
-    associations: NoteAssociation[];
-    onAccept: (association: NoteAssociation) => Promise<void>;
-    onIgnore: (association: NoteAssociation) => void;
-    onOpenFile: (noteId: string) => void;
-}
-
-const AssociationList: React.FC<AssociationListProps> = ({
-    associations,
-    onAccept,
-    onIgnore,
-    onOpenFile,
-}) => {
-    const handleAccept = async (association: NoteAssociation) => {
-        await onAccept(association);
-    };
-
-    const handleIgnore = (association: NoteAssociation) => {
-        onIgnore(association);
-    };
-
-    if (associations.length === 0) return null;
-
-    return (
-        <div className="memo-echo-association-list">
-            <div className="memo-echo-association-list-header">
-                <span>🔗 关联建议 ({associations.length}个)</span>
-            </div>
-            {associations.map((association, index) => (
-                <div key={index} className="memo-echo-association-item">
-                    <div className="memo-echo-association-notes">
-                        <div className="memo-echo-association-note">
-                            <span
-                                className="memo-echo-association-note-link"
-                                onClick={() =>
-                                    onOpenFile(association.sourceNoteId)
-                                }
-                            >
-                                📄{" "}
-                                {association.sourceNoteTitle ||
-                                    association.sourceNoteId}
-                            </span>
-                        </div>
-                        <div className="memo-echo-association-arrow">↔</div>
-                        <div className="memo-echo-association-note">
-                            <span
-                                className="memo-echo-association-note-link"
-                                onClick={() =>
-                                    onOpenFile(association.targetNoteId)
-                                }
-                            >
-                                📄{" "}
-                                {association.targetNoteTitle ||
-                                    association.targetNoteId}
-                            </span>
-                        </div>
-                    </div>
-                    <div className="memo-echo-association-concepts">
-                        {association.sharedConcepts.map((concept) => (
-                            <span
-                                key={concept}
-                                className="memo-echo-association-concept-tag"
-                            >
-                                [[{concept}]]
-                            </span>
-                        ))}
-                    </div>
-                    <div className="memo-echo-association-meta">
-                        <span className="memo-echo-association-confidence">
-                            置信度: {Math.round(association.confidence * 100)}%
-                        </span>
-                        {association.vectorSimilarity !== undefined && (
-                            <span className="memo-echo-association-similarity">
-                                相似度:{" "}
-                                {Math.round(association.vectorSimilarity * 100)}
-                                %
-                            </span>
-                        )}
-                    </div>
-                    <div className="memo-echo-association-actions">
-                        <button
-                            className="memo-echo-concept-btn memo-echo-concept-btn-primary"
-                            onClick={() => handleAccept(association)}
-                            title="接受关联并添加概念到两个笔记"
-                        >
-                            ✓ 接受
-                        </button>
-                        <button
-                            className="memo-echo-concept-btn"
-                            onClick={() => handleIgnore(association)}
-                            title="忽略此关联"
-                        >
-                            ✗ 忽略
-                        </button>
-                    </div>
-                </div>
-            ))}
         </div>
     );
 };

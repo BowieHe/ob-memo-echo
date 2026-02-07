@@ -4,6 +4,7 @@
  */
 
 import type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult } from '@core/types/embedding';
+import { MODEL_DIMENSIONS } from '@core/types/embedding';
 import { getErrorMessage } from '@utils/error';
 
 export type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult };
@@ -13,6 +14,19 @@ export class EmbeddingService {
 
     constructor(config: EmbeddingConfig) {
         this.config = config;
+        // Auto-detect dimension if not specified
+        if (!this.config.dimension && this.config.ollamaModel) {
+            this.config.dimension = MODEL_DIMENSIONS[this.config.ollamaModel] || 768;
+            console.log(`[EmbeddingService] Auto-detected dimension for ${this.config.ollamaModel}: ${this.config.dimension}`);
+        }
+        if (!this.config.dimension && this.config.openaiModel) {
+            this.config.dimension = MODEL_DIMENSIONS[this.config.openaiModel] || 1536;
+            console.log(`[EmbeddingService] Auto-detected dimension for ${this.config.openaiModel}: ${this.config.dimension}`);
+        }
+        if (!this.config.dimension) {
+            this.config.dimension = 768; // Fallback default
+            console.log(`[EmbeddingService] Using default dimension: ${this.config.dimension}`);
+        }
     }
 
     /**
@@ -20,6 +34,20 @@ export class EmbeddingService {
      */
     updateConfig(config: Partial<EmbeddingConfig>) {
         this.config = { ...this.config, ...config };
+        // Update dimension if model changed
+        if (config.ollamaModel && !config.dimension) {
+            this.config.dimension = MODEL_DIMENSIONS[config.ollamaModel] || this.config.dimension;
+        }
+        if (config.openaiModel && !config.dimension) {
+            this.config.dimension = MODEL_DIMENSIONS[config.openaiModel] || this.config.dimension;
+        }
+    }
+
+    /**
+     * Get the vector dimension for the current model
+     */
+    getDimension(): number {
+        return this.config.dimension || 768;
     }
 
     /**

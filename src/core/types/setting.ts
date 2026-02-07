@@ -50,14 +50,12 @@ export interface ConceptSkipConfig {
     skipPaths: string[];
     skipTags: string[];
     minTextLength: number;
-    conceptDictionaryPath: string;
 }
 
 export const DEFAULT_CONCEPT_SKIP_CONFIG: ConceptSkipConfig = {
     skipPaths: ["_me/", "templates/", "daily/"],
     skipTags: ["vocabulary", "daily", "template", "image-collection"],
     minTextLength: 100,
-    conceptDictionaryPath: "_me/_concept-dictionary.json",
 };
 
 export interface AssociationConfig {

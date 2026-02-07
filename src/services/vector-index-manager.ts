@@ -1,6 +1,6 @@
 /**
  * VectorIndexManager - Orchestrates indexing, caching, and persistence
- * v0.5.0: Uses VectorBackend interface for multi-backend support
+ * v0.7.0: Removed association engine, simplified to Index service only
  */
 
 import { MemoryCache, CachedChunk } from './memory-cache';
@@ -10,7 +10,6 @@ import { VECTOR_NAMES } from '@core/constants';
 import { EmbeddingService } from './embedding-service';
 import { Chunker, ChunkResult } from './chunker';
 import { MetadataExtractor } from './metadata-extractor';
-import { SimpleAssociationEngine } from './association-engine';
 
 export class VectorIndexManager {
     private memoryCache: MemoryCache;
@@ -19,21 +18,18 @@ export class VectorIndexManager {
     private embeddingService: EmbeddingService;
     private chunker: Chunker;
     private metadataExtractor: MetadataExtractor;
-    private associationEngine?: SimpleAssociationEngine; // v0.6.0: Optional association engine
 
     constructor(
         backend: VectorBackend,
         embeddingService: EmbeddingService,
         chunker: Chunker,
         metadataExtractor: MetadataExtractor,
-        cacheSize: number = 50 * 1024 * 1024, // 50MB default
-        associationEngine?: SimpleAssociationEngine // v0.6.0: Optional association engine
+        cacheSize: number = 50 * 1024 * 1024 // 50MB default
     ) {
         this.backend = backend;
         this.embeddingService = embeddingService;
         this.chunker = chunker;
         this.metadataExtractor = metadataExtractor;
-        this.associationEngine = associationEngine;
 
         this.memoryCache = new MemoryCache(cacheSize);
         this.persistQueue = new PersistQueue(backend, {
@@ -65,19 +61,6 @@ export class VectorIndexManager {
             }
         }
         console.log('[MemoEcho] Index finished:', filePath);
-
-        // v0.6.0: Update association engine if available
-        if (this.associationEngine) {
-            try {
-                // Extract title from file path (remove extension)
-                const title = filePath.split('/').pop()?.replace(/\.md$/, '') || filePath;
-
-                await this.associationEngine.indexNote(filePath, content, title);
-                console.log(`🔗 Updated association index for: ${filePath}`);
-            } catch (error) {
-                console.warn(`Failed to update association index for ${filePath}:`, error);
-            }
-        }
     }
 
     /**
@@ -264,16 +247,6 @@ export class VectorIndexManager {
     removeFile(filePath: string): void {
         this.memoryCache.deleteByFilePath(filePath);
         this.persistQueue.removeByFilePath(filePath);
-
-        // v0.6.0: Remove from association engine if available
-        if (this.associationEngine) {
-            try {
-                this.associationEngine.removeNote(filePath);
-                console.log(`🔗 Removed from association index: ${filePath}`);
-            } catch (error) {
-                console.warn(`Failed to remove from association index for ${filePath}:`, error);
-            }
-        }
     }
 
     /**

@@ -1,19 +1,5 @@
 import type { ConceptSkipConfig } from "./setting";
 
-export interface ConceptDictionary {
-    version: string;
-    lastUpdated: string;
-    concepts: Record<string, ConceptEntry>;
-}
-
-export interface ConceptEntry {
-    aliases: string[];
-    category?: string;
-    description?: string;
-    createdAt: string;
-    noteCount: number;
-}
-
 export interface ConceptMatch {
     originalTerm: string; // 文档中找到的原始词
     matchedConcept: string; // 匹配到的标准化概念名
@@ -47,7 +33,6 @@ export interface ConceptExtractionSettings {
     autoCreateConceptPage: boolean;
     conceptPagePrefix: string;
     skipRules: ConceptSkipConfig;
-    conceptDictionaryPath: string;
 }
 
 export interface ExtractedConceptWithMatch {

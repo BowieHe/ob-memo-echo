@@ -1,6 +1,7 @@
 /**
  * Settings Handlers
  * Handler classes for each settings group with validation logic
+ * v0.7.0: Removed association handler
  */
 
 import type {
@@ -13,8 +14,6 @@ import type { BaseModelConfig } from '../types/setting';
 import type { ConceptExtractionConfig } from '../types/setting';
 import type { ConceptFEConfig } from '../types/setting';
 import type { ConceptSkipConfig } from '../types/setting';
-import type { AssociationConfig as EngineAssociationConfig } from '../types/association';
-import type { UIAssociationConfig } from './types';
 
 /**
  * Embedding Settings Handler
@@ -125,43 +124,6 @@ export class ConceptExtractionSettingsHandler implements SettingsGroupHandler<Co
 
     async apply(config: Partial<ConceptExtractionConfig>, context: SettingsContext): Promise<void> {
         await this.updateService(config);
-        await context.saveSettings();
-    }
-}
-
-/**
- * Association Settings Handler
- * Handles UI association settings
- */
-export class AssociationSettingsHandler implements SettingsGroupHandler<UIAssociationConfig> {
-    readonly groupName = 'association';
-
-    constructor(private updateSettings: (config: Partial<UIAssociationConfig>) => void) { }
-
-    validate(config: Partial<UIAssociationConfig>): SettingsUpdateResult {
-        if (config.associationMinConfidence !== undefined) {
-            if (config.associationMinConfidence < 0 || config.associationMinConfidence > 1) {
-                return {
-                    success: false,
-                    errors: [{ field: 'associationMinConfidence', message: 'Must be between 0 and 1' }],
-                };
-            }
-        }
-
-        if (config.associationAutoScanBatchSize !== undefined) {
-            if (config.associationAutoScanBatchSize < 1) {
-                return {
-                    success: false,
-                    errors: [{ field: 'associationAutoScanBatchSize', message: 'Must be positive' }],
-                };
-            }
-        }
-
-        return { success: true };
-    }
-
-    async apply(config: Partial<UIAssociationConfig>, context: SettingsContext): Promise<void> {
-        this.updateSettings(config);
         await context.saveSettings();
     }
 }
