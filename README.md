@@ -32,7 +32,7 @@ Memo Echo is an AI-powered Obsidian plugin that acts as your "Second Brain's Voi
     - Pull a chat model: `ollama pull qwen2.5` (or `llama3`)
 
 2. **Qdrant**: High-performance Vector Database.
-    - Run with Docker: `docker run -p 6333:6333 qdrant/qdrant`
+    - Run with Docker: `docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v ~/.qdrant_storage:/qdrant/storage qdrant/qdrant:latest`
     - Or install locally: https://qdrant.tech
 
 ## Installation

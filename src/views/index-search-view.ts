@@ -42,9 +42,16 @@ export class IndexSearchView extends ItemView {
     }
 
     async onOpen(): Promise<void> {
-        this.container = this.containerEl.children[1] as HTMLElement;
-        this.container.empty();
-        this.container.addClass('unified-search-view');
+        // Safe: Use existing container or create fallback
+        const container = this.containerEl.children[1] as HTMLElement;
+        if (!container) {
+            console.warn('[IndexSearchView] Container element not found at children[1], creating fallback container');
+            this.container = this.containerEl.createDiv('unified-search-view-container');
+        } else {
+            this.container = container;
+            this.container.empty();
+            this.container.addClass('unified-search-view');
+        }
 
         // Mount React Component
         this.renderReact();
@@ -56,14 +63,25 @@ export class IndexSearchView extends ItemView {
     }
 
     private renderReact() {
-        this.root = createRoot(this.container);
-        this.root.render(
-            React.createElement(Sidebar, {
-                searchService: this.searchService,
-                initialMode: 'ambient', // Start with ambient mode (empty search)
-                onIndexCurrent: this.handleIndexCurrentFile,
-            })
-        );
+        try {
+            if (!this.container) {
+                console.error('[IndexSearchView] Container is null, cannot mount React component');
+                return;
+            }
+
+            this.root = createRoot(this.container);
+            this.root.render(
+                React.createElement(Sidebar, {
+                    searchService: this.searchService,
+                    initialMode: 'ambient', // Start with ambient mode (empty search)
+                    onIndexCurrent: this.handleIndexCurrentFile,
+                })
+            );
+
+            console.log('[IndexSearchView] ✅ React component mounted successfully');
+        } catch (error) {
+            console.error('[IndexSearchView] ❌ Failed to mount React component:', error);
+        }
     }
 
     async onClose(): Promise<void> {
@@ -78,7 +96,7 @@ export class IndexSearchView extends ItemView {
      * Handle index current file button click
      */
     private handleIndexCurrentFile = () => {
-        void this.onIndexCurrentFile();
+        return this.onIndexCurrentFile();
     };
 
     /**
