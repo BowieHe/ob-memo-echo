@@ -706,7 +706,7 @@ export class MemoEchoSettingTab extends PluginSettingTab {
                         if (confirmed) {
                             try {
                                 new Notice('🔄 正在清除...');
-                                const result = await this.plugin.frontmatterService.clearAllMemoEchoFields();
+                                const result = await this.plugin.frontmatterService.clearAllMemoEchoFieldsFromAllFiles();
                                 new Notice(`✅ 已清除 ${result.cleared} 个文件${result.failed > 0 ? `, ${result.failed} 个失败` : ''}`);
                             } catch (error) {
                                 new Notice(`❌ 清除失败: ${getErrorMessage(error)}`);

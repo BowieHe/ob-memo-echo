@@ -3,9 +3,12 @@
  * Types for metadata and concept extraction
  */
 
-export interface ExtractedMetadataConcept {
-	name: string;
-	confidence: number;
+/**
+ * Me concept link structure (for full-text recommended wikilinks)
+ */
+export interface MeConceptLink {
+	raw_text: string;  // "[[虚拟机]]"
+	reason: string;
 }
 
 /**
@@ -13,16 +16,16 @@ export interface ExtractedMetadataConcept {
  */
 export interface ExtractedMetadata {
 	summary: string;
-	tags: string[];
+	me_tag: string[];  // tags → me_tag
 	category: string;
-	concepts: ExtractedMetadataConcept[]; // Abstract concepts with confidence
+	me_concepts: MeConceptLink[];  // Full-text recommended wikilinks
 }
 
 export const EMPTY_EXTRACTED_METADATA: ExtractedMetadata = {
 	summary: "",
-	tags: [],
+	me_tag: [],
 	category: "",
-	concepts: [],
+	me_concepts: [],
 };
 
 /**

@@ -70,6 +70,7 @@ export interface MultiVectorQueuedChunk {
 		[VECTOR_NAMES.CONTENT]: number[];
 		[VECTOR_NAMES.SUMMARY]: number[];
 		[VECTOR_NAMES.TITLE]: number[];
+		[VECTOR_NAMES.TAG]: number[];
 	};
 	metadata: Record<string, any>;
 }

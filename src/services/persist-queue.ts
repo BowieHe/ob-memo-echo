@@ -160,6 +160,7 @@ export class PersistQueue {
                         content_vec: chunk.vector,
                         summary_vec: chunk.vector, // Use same vector for all in legacy mode
                         title_vec: chunk.vector,
+                        tag_vec: chunk.vector, // Use same vector for tag in legacy mode
                     },
                     metadata: chunk.metadata,
                 });

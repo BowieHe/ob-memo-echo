@@ -12,10 +12,8 @@ import { Chunker, ChunkResult } from "./chunker";
 import { MetadataExtractor } from "./metadata-extractor";
 import { ContentPreprocessor } from "./content-preprocessor";
 import { SemanticChunker } from "./semantic-chunker";
-import type {
-	ExtractedConceptDetail,
-	ExtractedMetadataConcept,
-} from "@core/types/extraction";
+import { WikilinkExtractor } from "./wikilink-extractor";
+import type { ExtractedConceptDetail } from "@core/types/extraction";
 import type { SemanticChunk, UnifiedIndexResult } from "@core/types/indexing";
 
 export class VectorIndexManager {
@@ -27,6 +25,7 @@ export class VectorIndexManager {
 	private metadataExtractor: MetadataExtractor;
 	private contentPreprocessor: ContentPreprocessor;
 	private semanticChunker: SemanticChunker;
+	private wikilinkExtractor: WikilinkExtractor;
 
 	constructor(
 		backend: VectorBackend,
@@ -35,6 +34,7 @@ export class VectorIndexManager {
 		metadataExtractor: MetadataExtractor,
 		contentPreprocessor: ContentPreprocessor,
 		semanticChunker: SemanticChunker,
+		wikilinkExtractor: WikilinkExtractor,
 		cacheSize: number = 50 * 1024 * 1024, // 50MB default
 	) {
 		this.backend = backend;
@@ -43,6 +43,7 @@ export class VectorIndexManager {
 		this.metadataExtractor = metadataExtractor;
 		this.contentPreprocessor = contentPreprocessor;
 		this.semanticChunker = semanticChunker;
+		this.wikilinkExtractor = wikilinkExtractor;
 
 		this.memoryCache = new MemoryCache(cacheSize);
 		this.persistQueue = new PersistQueue(backend, {
@@ -118,6 +119,8 @@ export class VectorIndexManager {
 			content.length,
 		);
 
+		// 🆕 Extract me_concepts from full text
+		const me_concepts = await this.metadataExtractor.extractConceptsFromFullText(content);
 		const concepts: ExtractedConceptDetail[] = [];
 
 		for (const chunk of chunks) {
@@ -136,17 +139,18 @@ export class VectorIndexManager {
 				const extractedMetadata = await this.metadataExtractor.extract(
 					chunk.content,
 				);
-				const chunkConcepts = this.mapConceptsFromMetadata(
-					extractedMetadata.concepts,
-					extractedMetadata.summary,
-					chunk.header_path,
+
+				// 🆕 Generate tag vector
+				const tagVector = await this.embeddingService.embed(
+					extractedMetadata.me_tag.join(", ")
 				);
 
-				concepts.push(...chunkConcepts);
 				await this.indexChunkWithMetadata(
 					filePath,
 					chunk,
 					extractedMetadata,
+					me_concepts,
+					tagVector,
 				);
 			} catch (error) {
 				console.error(
@@ -164,7 +168,7 @@ export class VectorIndexManager {
 
 		return {
 			chunks,
-			concepts: this.deduplicateConcepts(concepts),
+			concepts,
 		};
 	}
 
@@ -179,7 +183,19 @@ export class VectorIndexManager {
 		const extractedMetadata = await this.metadataExtractor.extract(
 			chunk.content,
 		);
-		await this.indexChunkWithMetadata(filePath, chunk, extractedMetadata);
+		// 🆕 Generate tag vector
+		const tagVector = await this.embeddingService.embed(
+			extractedMetadata.me_tag.join(", ")
+		);
+		// 🆕 Pass empty me_concepts for now
+		const me_concepts: Array<{ raw_text: string; reason: string }> = [];
+		await this.indexChunkWithMetadata(
+			filePath,
+			chunk,
+			extractedMetadata,
+			me_concepts,
+			tagVector
+		);
 	}
 
 	private async indexChunkWithMetadata(
@@ -187,10 +203,11 @@ export class VectorIndexManager {
 		chunk: ChunkResult,
 		extractedMetadata: {
 			summary: string;
-			tags: string[];
+			me_tag: string[];
 			category: string;
-			concepts: ExtractedMetadataConcept[];
 		},
+		me_concepts: Array<{ raw_text: string; reason: string }>, // Full-text recommended wikilinks
+		tagVector: number[], // Tag vector for concept matching
 	): Promise<void> {
 		const chunkId = `${filePath}-chunk-${chunk.index}`;
 
@@ -204,11 +221,7 @@ export class VectorIndexManager {
 				this.embeddingService.embed(chunk.header_path || filePath),
 			]);
 
-		const conceptNames = extractedMetadata.concepts
-			.map((concept) => concept.name)
-			.filter(Boolean);
-
-		// Simplified payload (v0.4.0)
+		// Updated payload (v0.8.0)
 		const payload = {
 			filePath,
 			header_path: chunk.header_path,
@@ -216,11 +229,11 @@ export class VectorIndexManager {
 			end_line: chunk.end_line,
 			content: chunk.content,
 			summary: extractedMetadata.summary,
-			tags: [
-				...extractedMetadata.tags,
-				extractedMetadata.category, // Merge category into tags
-			].filter(Boolean),
-			concepts: conceptNames,
+			// 🆕 me_tag and tags
+			me_tag: extractedMetadata.me_tag,
+			tags: [...extractedMetadata.me_tag, extractedMetadata.category].filter(Boolean),
+			// 🆕 me_concepts (full-text recommended wikilinks)
+			me_concepts: me_concepts,
 			type: "chunk",
 			word_count: chunk.content.length,
 			indexedAt: Date.now(),
@@ -245,6 +258,7 @@ export class VectorIndexManager {
 				[VECTOR_NAMES.CONTENT]: contentEmbedding,
 				[VECTOR_NAMES.SUMMARY]: summaryEmbedding,
 				[VECTOR_NAMES.TITLE]: titleEmbedding,
+				[VECTOR_NAMES.TAG]: tagVector,
 			},
 			metadata: payload,
 		};
@@ -296,44 +310,6 @@ export class VectorIndexManager {
 			pos += lines[i].length + 1;
 		}
 		return pos;
-	}
-
-	private mapConceptsFromMetadata(
-		concepts: ExtractedMetadataConcept[],
-		summary: string,
-		headerPath: string,
-	): ExtractedConceptDetail[] {
-		const reason = summary?.trim()
-			? summary.trim()
-			: headerPath
-				? `片段主题: ${headerPath}`
-				: "来自片段内容";
-
-		return concepts
-			.filter((concept) => concept && concept.name)
-			.map((concept) => ({
-				name: concept.name,
-				confidence: Number.isFinite(concept.confidence)
-					? concept.confidence
-					: 0.7,
-				reason,
-			}));
-	}
-
-	private deduplicateConcepts(
-		concepts: ExtractedConceptDetail[],
-	): ExtractedConceptDetail[] {
-		const map = new Map<string, ExtractedConceptDetail>();
-
-		for (const concept of concepts) {
-			const key = concept.name.toLowerCase();
-			const existing = map.get(key);
-			if (!existing || existing.confidence < concept.confidence) {
-				map.set(key, concept);
-			}
-		}
-
-		return Array.from(map.values());
 	}
 
 	/**

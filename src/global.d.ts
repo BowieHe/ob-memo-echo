@@ -3,7 +3,7 @@
  * Custom window events for plugin-wide communication
  */
 
-import type { SearchResult } from '@core/types/indexing';
+import type { SearchResult } from '@core/types/vector';
 import type { ExtractedConceptWithMatch, ConfirmedConcept } from '@core/types/concept';
 
 declare global {

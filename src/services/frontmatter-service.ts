@@ -1,6 +1,6 @@
 /**
  * FrontmatterService - Safe read/write operations for note frontmatter
- * v0.5.0: Manages me_concepts and me_indexed_at fields
+ * v0.6.0: Manages me_tag, me_concepts, me_indexed_at fields
  */
 
 import { App, TFile } from 'obsidian';
@@ -8,17 +8,76 @@ import type { MemoEchoFrontmatter } from '@core/types/frontmatter';
 
 export type { MemoEchoFrontmatter };
 
+export interface FrontmatterSettings {
+    meTagStrategy: 'always' | 'incremental' | 'smart';
+    userTagThreshold: number;
+}
+
 export class FrontmatterService {
     private app: App;
     private conceptPagePrefix: string;
+    private settings: FrontmatterSettings;
 
     constructor(app: App, conceptPagePrefix: string = '_me') {
         this.app = app;
         this.conceptPagePrefix = conceptPagePrefix;
+        this.settings = {
+            meTagStrategy: 'smart',
+            userTagThreshold: 3,
+        };
     }
 
     updateConceptPagePrefix(prefix: string): void {
         this.conceptPagePrefix = prefix;
+    }
+
+    updateSettings(settings: FrontmatterSettings): void {
+        this.settings = { ...this.settings, ...settings };
+    }
+
+    /**
+     * Set me_tag field to frontmatter (smart incremental)
+     */
+    async setMeTag(file: TFile, me_tag: string[]): Promise<void> {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const userTags = cache?.tags?.map(t => t.tag) || [];
+
+        const strategy = this.settings.meTagStrategy || 'always';
+
+        let finalMeTag: string[] | undefined;
+
+        switch (strategy) {
+            case "always":
+                finalMeTag = me_tag;
+                break;
+            case "incremental":
+                finalMeTag = [...userTags, ...me_tag];
+                break;
+            case "smart":
+                const threshold = this.settings.userTagThreshold || 3;
+                finalMeTag = userTags.length >= threshold ? undefined : me_tag;
+                break;
+        }
+
+        if (!finalMeTag || finalMeTag.length === 0) return;
+
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            frontmatter.me_tag = finalMeTag;
+        });
+    }
+
+    /**
+     * Set me_concepts_links field to frontmatter (recommended wikilinks from full text)
+     */
+    async setMeConceptsLinks(
+        file: TFile,
+        concepts_links: Array<{ raw_text: string; reason: string }>
+    ): Promise<void> {
+        if (!concepts_links || concepts_links.length === 0) return;
+
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            frontmatter.me_concepts_links = concepts_links;
+        });
     }
 
     /**
@@ -35,6 +94,8 @@ export class FrontmatterService {
         return {
             me_concepts: frontmatter.me_concepts,
             me_indexed_at: frontmatter.me_indexed_at,
+            me_tag: frontmatter.me_tag,  // 新增
+            me_concepts_links: frontmatter.me_concepts_links,  // 新增
         };
     }
 
@@ -57,26 +118,22 @@ export class FrontmatterService {
      * @param concepts - Array of concept names (without wikilink syntax) to ADD
      */
     async setConcepts(file: TFile, concepts: string[]): Promise<void> {
-        if (concepts.length === 0) {
-            return; // Don't clear, just return
+        const cache = this.app.metadataCache.getFileCache(file);
+        const frontmatter = cache?.frontmatter || {};
+        const existingConcepts = frontmatter.me_concepts || [];
+
+        const newNames = new Set(
+            existingConcepts.map((c: any) => c.match(/\[\/|\\|\|,]\]\]/g))
+        );
+
+        for (const concept of concepts) {
+            if (newNames.has(concept)) {
+                newNames.add(concept);
+            }
         }
 
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            // Get existing concepts and extract concept names
-            const existingConcepts = frontmatter.me_concepts || [];
-            const existingNames = new Set(
-                existingConcepts.map((c: string) => {
-                    // Extract concept name from [[prefix/name]] format
-                    const match = c.match(/\[\[.+\/(.+)\]\]$/);
-                    return match ? match[1] : c;
-                })
-            );
-
-            // Add new concepts to the set
-            concepts.forEach(c => existingNames.add(c));
-
-            // Convert back to wikilink format
-            frontmatter.me_concepts = Array.from(existingNames).map(
+            frontmatter.me_concepts = Array.from(newNames).map(
                 c => `[[${this.conceptPagePrefix}/${c}]]`
             );
         });
@@ -94,49 +151,21 @@ export class FrontmatterService {
     }
 
     /**
-     * Update both concepts and indexed_at atomically (incremental merge for concepts)
-     */
-    async updateAfterIndexing(file: TFile, concepts: string[]): Promise<void> {
-        const isoString = new Date().toISOString();
-
-        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            // Get existing concepts and extract concept names
-            const existingConcepts = frontmatter.me_concepts || [];
-            const existingNames = new Set(
-                existingConcepts.map((c: string) => {
-                    // Extract concept name from [[prefix/name]] format
-                    const match = c.match(/\[\[.+\/(.+)\]\]$/);
-                    return match ? match[1] : c;
-                })
-            );
-
-            // Add new concepts to the set
-            concepts.forEach(c => existingNames.add(c));
-
-            // Convert back to wikilink format
-            frontmatter.me_concepts = Array.from(existingNames).map(
-                c => `[[${this.conceptPagePrefix}/${c}]]`
-            );
-
-            // Update indexed_at timestamp
-            frontmatter.me_indexed_at = isoString;
-        });
-    }
-
-    /**
-     * Remove all me_* fields from frontmatter
+     * Clear all me_* fields from frontmatter
      */
     async clearMemoEchoFields(file: TFile): Promise<void> {
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
             delete frontmatter.me_concepts;
             delete frontmatter.me_indexed_at;
+            delete frontmatter.me_tag;
+            delete frontmatter.me_concepts_links;
         });
     }
 
     /**
      * Clear all me_* fields from all markdown files
      */
-    async clearAllMemoEchoFields(): Promise<{ cleared: number; failed: number }> {
+    async clearAllMemoEchoFieldsFromAllFiles(): Promise<{ cleared: number; failed: number }> {
         const files = this.app.vault.getMarkdownFiles();
         let cleared = 0;
         let failed = 0;
@@ -173,7 +202,6 @@ export class FrontmatterService {
                 if (fields.me_concepts) {
                     for (const wikilink of fields.me_concepts) {
                         // Extract concept name from wikilink
-                        // [[_me/Docker]] → Docker
                         const match = wikilink.match(/\[\[.*\/(.+)\]\]/);
                         if (match) {
                             conceptSet.add(match[1]);
@@ -214,7 +242,7 @@ export class FrontmatterService {
     }
 
     /**
-     * Get files that share concepts with the given file
+     * Get files that share concepts with given file
      */
     async getRelatedFiles(file: TFile): Promise<{ file: TFile; sharedConcepts: string[] }[]> {
         const fields = await this.readMemoEchoFields(file);
@@ -248,7 +276,32 @@ export class FrontmatterService {
             }
         }
 
-        // Sort by number of shared concepts (descending)
         return related.sort((a, b) => b.sharedConcepts.length - a.sharedConcepts.length);
+    }
+
+    /**
+     * Update both concepts and indexed_at atomically (incremental merge for concepts)
+     */
+    async updateAfterIndexing(file: TFile, concepts: string[]): Promise<void> {
+        const isoString = new Date().toISOString();
+
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            // Get existing concepts and extract concept names
+            const existingConcepts = frontmatter.me_concepts || [];
+            const existingNames = new Set(
+                existingConcepts.map((c: any) => c.match(/\[\[.+\/(.+)\]\]$/))
+            );
+
+            // Add new concepts to set
+            concepts.forEach(c => existingNames.add(c));
+
+            // Convert back to wikilink format
+            frontmatter.me_concepts = Array.from(existingNames).map(
+                c => `[[${this.conceptPagePrefix}/${c}]]`
+            );
+
+            // Update indexed_at timestamp
+            frontmatter.me_indexed_at = isoString;
+        });
     }
 }

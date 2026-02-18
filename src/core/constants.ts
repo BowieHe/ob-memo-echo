@@ -40,10 +40,18 @@ export const VECTOR_TITLE: VectorConfig = {
 	description: "Title vector from note title",
 };
 
+export const VECTOR_TAG: VectorConfig = {
+	name: "TAG",
+	value: "tag_vec",
+	weight: 1.0,
+	label: "Tag",
+	description: "Tag vector for concept matching",
+};
+
 /**
  * All vector configs as array (for iteration)
  */
-export const VECTOR_CONFIGS = [VECTOR_CONTENT, VECTOR_SUMMARY, VECTOR_TITLE];
+export const VECTOR_CONFIGS = [VECTOR_CONTENT, VECTOR_SUMMARY, VECTOR_TITLE, VECTOR_TAG];
 
 /**
  * Vector name enum - for backward compatibility and type safety
@@ -52,6 +60,7 @@ export enum VECTOR_NAMES {
 	CONTENT = "content_vec",
 	SUMMARY = "summary_vec",
 	TITLE = "title_vec",
+	TAG = "tag_vec",
 }
 
 /**
@@ -61,6 +70,7 @@ export const DEFAULT_WEIGHTS: Record<VECTOR_NAMES, number> = {
 	[VECTOR_NAMES.CONTENT]: VECTOR_CONTENT.weight,
 	[VECTOR_NAMES.SUMMARY]: VECTOR_SUMMARY.weight,
 	[VECTOR_NAMES.TITLE]: VECTOR_TITLE.weight,
+	[VECTOR_NAMES.TAG]: VECTOR_TAG.weight,
 };
 
 /**

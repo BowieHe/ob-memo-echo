@@ -463,6 +463,50 @@ export class QdrantBackend implements VectorBackend {
     }
 
     /**
+     * Generic scroll method for all points (used by WikilinkIndex)
+     */
+    async scroll(options: {
+        limit?: number;
+        offset?: string;
+        with_payload?: boolean;
+        filter?: {
+            must?: Array<{ key: string; match: { value: string } }>;
+        };
+    }): Promise<{
+        points: Array<{ id: string; score?: number; payload: Record<string, any> }>;
+        nextPage: string | null;
+    }> {
+        const limit = options.limit || 1000;
+        const offset = options.offset;
+        const withPayload = options.with_payload ?? true;
+
+        try {
+            const result = await this.client.scroll(this.collectionName, {
+                limit,
+                offset,
+                with_payload: withPayload,
+                with_vector: false,
+                filter: options.filter,
+            });
+
+            // Handle scroll result format
+            const scrollResult = result as any;
+            const points = scrollResult.points || scrollResult || [];
+
+            return {
+                points: (Array.isArray(points) ? points : [points]).map((point: any) => ({
+                    id: point.id,
+                    payload: point.payload,
+                })),
+                nextPage: (scrollResult.next_page_offset as string | undefined) || null,
+            };
+        } catch (error) {
+            console.warn('[Qdrant] Scroll failed:', error);
+            return { points: [], nextPage: null };
+        }
+    }
+
+    /**
      * Get a single concept by name
      * Returns both payload and point ID (needed for updates)
      */

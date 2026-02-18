@@ -7,7 +7,7 @@ import type { VECTOR_NAMES } from '@core/constants';
 
 /**
  * Multi-vector item for indexing with named vectors
- * Supports three named vectors: content_vec, summary_vec, title_vec
+ * Supports four named vectors: content_vec, summary_vec, title_vec, tag_vec
  */
 export interface MultiVectorItem {
     id: string;
@@ -81,4 +81,19 @@ export interface VectorBackend {
      * Clear all data
      */
     clear(): Promise<void>;
+
+    /**
+     * Scroll through all points (for wikilink index and other metadata queries)
+     */
+    scroll(options: {
+        limit?: number;
+        offset?: string;
+        with_payload?: boolean;
+        filter?: {
+            must?: Array<{ key: string; match: { value: string } }>;
+        };
+    }): Promise<{
+        points: Array<{ id: string; score?: number; payload: Record<string, any> }>;
+        nextPage: string | null;
+    }>;
 }

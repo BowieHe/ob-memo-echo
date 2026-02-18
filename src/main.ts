@@ -17,6 +17,7 @@ import { ParagraphDetector } from "./services/paragraph-detector";
 import { FrontmatterService } from "./services/frontmatter-service";
 import { ConceptRegistry } from "./services/concept-registry";
 import { SearchService } from "./services/search-service";
+import { WikilinkExtractor } from "./services/wikilink-extractor";
 import type {
 	ExtractedConceptWithMatch,
 	ConfirmedConcept,
@@ -53,6 +54,7 @@ export default class MemoEchoPlugin extends Plugin {
 
 	// v0.7.0 services
 	searchService!: SearchService;
+	wikilinkExtractor!: WikilinkExtractor;
 
 	// Settings manager
 	settingsManager!: SettingsManager;
@@ -120,6 +122,10 @@ export default class MemoEchoPlugin extends Plugin {
 		);
 		console.log("🧭 Semantic chunker initialized");
 
+		// v0.7.0: Initialize wikilink extractor
+		this.wikilinkExtractor = new WikilinkExtractor(this.app);
+		console.log("🔗 Wikilink extractor initialized");
+
 		// v0.7.0: Initialize search service
 		this.searchService = new SearchService(
 			this.embeddingService,
@@ -135,6 +141,7 @@ export default class MemoEchoPlugin extends Plugin {
 			this.metadataExtractor,
 			this.contentPreprocessor,
 			this.semanticChunker,
+			this.wikilinkExtractor,
 			50 * 1024 * 1024, // 50MB cache
 		);
 

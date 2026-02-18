@@ -104,9 +104,9 @@ export class IndexSearchView extends ItemView {
      */
     private handleOpenFile = (event: WindowEventMap['memo-echo:open-file']) => {
         const result = event.detail;
-        if (!result || !result.notePath) return;
+        if (!result || !result.metadata?.filePath) return;
 
-        void this.openNote(result.notePath);
+        void this.openNote(result.metadata.filePath);
     };
 
     /**

@@ -33,7 +33,7 @@ export class MetadataExtractor {
 	}
 
 	/**
-	 * Extract metadata using AI with fallback to rules
+	 * Extract metadata using AI with fallback to rules (chunk-level)
 	 */
 	async extract(content: string): Promise<ExtractedMetadata> {
 		// Handle empty content
@@ -50,6 +50,31 @@ export class MetadataExtractor {
 		} catch (error) {
 			console.warn(`${this.config.provider} extraction failed`, error);
 			return EMPTY_EXTRACTED_METADATA;
+		}
+	}
+
+	/**
+	 * Extract me_concepts (recommended wikilinks) from full text
+	 * This is separate from chunk-level metadata extraction
+	 */
+	async extractConceptsFromFullText(content: string): Promise<Array<{
+		raw_text: string;
+		reason: string;
+	}>> {
+		// Handle empty content
+		if (!content || content.trim().length === 0) {
+			return [];
+		}
+
+		try {
+			if (this.config.provider === "openai") {
+				return await this.extractConceptsWithOpenAI(content);
+			} else {
+				return await this.extractConceptsWithOllama(content);
+			}
+		} catch (error) {
+			console.warn(`${this.config.provider} concept extraction failed`, error);
+			return [];
 		}
 	}
 
@@ -132,9 +157,9 @@ export class MetadataExtractor {
 	private normalizeResult(result: any): ExtractedMetadata {
 		return {
 			summary: result.summary || "",
-			tags: this.normalizeTags(result.tags || []),
+			me_tag: this.normalizeMeTag(result.tags || result.me_tag || []),
 			category: this.normalizeCategory(result.category || "技术笔记"),
-			concepts: this.normalizeConcepts(result.concepts || []),
+			me_concepts: [], // Initialize as empty, will be filled by extractConceptsFromFullText
 		};
 	}
 
@@ -147,7 +172,7 @@ export class MetadataExtractor {
 	// My replacement ends at line 276 (file end). So I must include EVERYTHING.
 
 	/**
-	 * Build prompt for Ollama/OpenAI
+	 * Build prompt for Ollama/OpenAI (chunk-level)
 	 */
 	private buildPrompt(content: string): string {
 		const truncatedContent =
@@ -162,27 +187,50 @@ export class MetadataExtractor {
 ${truncatedContent}
 """
 
-请分析这段内容，识别其中包含的**核心问题**（如"防止重复处理"）和**技术机制/设计模式**（如"幂等性"）。
-请忽略具体的技术名称（如 Kafka, Redis），而是提取通用的计算机科学或工程概念。
-
 请以 JSON 格式返回：
 {
   "summary": "一句话概括（20-50 字）",
-    "tags": ["标签1", "标签2", "标签3", "标签4"],
-  "category": "技术笔记",
-    "concepts": [{"name": "概念1", "confidence": 0.9}, {"name": "概念2", "confidence": 0.8}]
+  "me_tag": ["标签1", "标签2", "标签3", "标签4"],
+  "category": "技术笔记"
 }
 
 要求：
 - summary: 简明扼要。
-- tags: 具体的关键词（如 Rust, Kafka）。
-- concepts: 抽象的概念或模式（如 Idempotency, Event Sourcing, CAP Theorem），并给出 0-1 的置信度。
+- me_tag: 这段文本的核心内容/主题（2-5个）
 - category: 从以下选项中选择：技术笔记、生活日记、读书笔记、想法灵感、工作记录
 
 只返回 JSON，不要其他内容。`;
 	}
 
-	private normalizeTags(tags: string[]): string[] {
+	/**
+	 * Build prompt for concept extraction (full-text)
+	 */
+	private buildConceptsPrompt(content: string): string {
+		const truncatedContent =
+			content.length > 2000
+				? content.substring(0, 2000) + "..."
+				: content;
+
+		return `请分析整篇笔记，推荐其中可能需要建立的外部链接（双链）。
+笔记全文：
+"""
+${truncatedContent}
+"""
+
+请以 JSON 格式返回：
+{
+  "me_concepts": [
+    {
+      "raw_text": "[[虚拟机]]",
+      "reason": "容器技术与虚拟机相关"
+    }
+  ]
+}
+
+只返回 JSON，不要其他内容。`;
+	}
+
+	private normalizeMeTag(tags: string[]): string[] {
 		if (!Array.isArray(tags)) return [];
 		const uniqueTags = Array.from(
 			new Set(tags.filter((t) => t && t.trim())),
@@ -196,44 +244,85 @@ ${truncatedContent}
 			: DEFAULT_CATEGORY;
 	}
 
-	private normalizeConcepts(
-		concepts: any[],
-	): Array<{ name: string; confidence: number }> {
-		if (!Array.isArray(concepts)) return [];
+	/**
+	 * Extract me_concepts (recommended wikilinks) with Ollama
+	 */
+	private async extractConceptsWithOllama(
+		content: string,
+	): Promise<Array<{ raw_text: string; reason: string }>> {
+		const prompt = this.buildConceptsPrompt(content);
+		const url = this.config.baseUrl || "http://localhost:11434";
+		const model = this.config.model || "llama3:4b";
 
-		const normalized = concepts
-			.map((item) => {
-				if (typeof item === "string") {
-					return { name: item.trim(), confidence: 0.7 };
-				}
-				if (item && typeof item.name === "string") {
-					const confidence = Number(item.confidence);
-					return {
-						name: item.name.trim(),
-						confidence: Number.isFinite(confidence)
-							? confidence
-							: 0.7,
-					};
-				}
-				return null;
-			})
-			.filter(
-				(item): item is { name: string; confidence: number } =>
-					!!item && !!item.name,
-			);
+		const response = await fetch(`${url}/api/generate`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				model: model,
+				prompt: prompt,
+				stream: false,
+				format: "json",
+			}),
+		});
 
-		const unique = new Map<string, { name: string; confidence: number }>();
-		for (const item of normalized) {
-			const key = item.name.toLowerCase();
-			const existing = unique.get(key);
-			if (!existing || existing.confidence < item.confidence) {
-				unique.set(key, item);
-			}
+		if (!response.ok) {
+			throw new Error(`Ollama API error: ${response.statusText}`);
 		}
 
-		return Array.from(unique.values()).slice(
-			0,
-			METADATA_CONSTRAINTS.maxKeywords,
-		);
+		const data = await response.json();
+		try {
+			const result = JSON.parse(data.response);
+			return result.me_concepts || [];
+		} catch (error) {
+			console.warn("Failed to parse concepts from Ollama:", error);
+			return [];
+		}
+	}
+
+	/**
+	 * Extract me_concepts (recommended wikilinks) with OpenAI
+	 */
+	private async extractConceptsWithOpenAI(
+		content: string,
+	): Promise<Array<{ raw_text: string; reason: string }>> {
+		const prompt = this.buildConceptsPrompt(content);
+		const url = this.config.baseUrl || "https://api.openai.com/v1";
+		const model = this.config.model || "gpt-5-turbo";
+		const apiKey = this.config.apiKey || "";
+
+		const response = await fetch(`${url}/chat/completions`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify({
+				model: model,
+				messages: [
+					{
+						role: "system",
+						content:
+							"You are a helpful assistant that extracts metadata from text. Respond only in JSON.",
+					},
+					{ role: "user", content: prompt },
+				],
+				temperature: 0.3,
+			}),
+		});
+
+		if (!response.ok) {
+			throw new Error(`OpenAI API error: ${response.statusText}`);
+		}
+
+		const data = await response.json();
+		try {
+			const contentStr = data.choices[0]?.message?.content || "{}";
+			const cleanJson = contentStr.replace(/```json\n?|\n?```/g, "");
+			const result = JSON.parse(cleanJson);
+			return result.me_concepts || [];
+		} catch (error) {
+			console.warn("Failed to parse concepts from OpenAI:", error);
+			return [];
+		}
 	}
 }
