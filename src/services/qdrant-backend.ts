@@ -14,13 +14,14 @@ import {
 import { generateUUID } from '@utils/uuid';
 import { Notice } from 'obsidian';
 import type { ConceptPayload } from '@core/types/concept-registry';
+import type { HealthCheckResult, HealthCheckable } from '@core/types/health-check';
 
 // Minimal interface for embedding service dimension access
 interface EmbeddingServiceDimension {
     getDimension(): number;
 }
 
-export class QdrantBackend implements VectorBackend {
+export class QdrantBackend implements VectorBackend, HealthCheckable {
     private client: QdrantClient;
     private collectionName: string;
     private qdrantUrl: string;
@@ -220,11 +221,24 @@ export class QdrantBackend implements VectorBackend {
     }
 
     async count(): Promise<number> {
+        const info = await this.client.getCollection(this.collectionName);
+        return info.points_count || 0;
+    }
+
+    async checkConnection(): Promise<HealthCheckResult> {
         try {
             const info = await this.client.getCollection(this.collectionName);
-            return info.points_count || 0;
-        } catch (error) {
-            return 0;
+            return {
+                connected: true,
+                message: `已连接 (${info.points_count || 0} 个向量)`,
+                detail: `Collection: ${this.collectionName}`
+            };
+        } catch (error: any) {
+            return {
+                connected: false,
+                message: `连接失败: ${error.message || '未知错误'}`,
+                detail: error.code || error.toString()
+            };
         }
     }
 

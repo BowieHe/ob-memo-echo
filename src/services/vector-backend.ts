@@ -4,79 +4,18 @@
  */
 
 import { VECTOR_NAMES, RRF_K } from '@core/constants';
+import type { SearchResult } from '@core/types/vector';
 
-// Multi-vector item for indexing
-export interface MultiVectorItem {
-    id: string;
-    vectors: Record<VECTOR_NAMES, number[]>;
-    metadata: Record<string, any>;
-}
-
-// Search result
-export interface SearchResult {
-    id: string;
-    score: number;
-    metadata: Record<string, any>;
-}
-
-// Search options
-export interface SearchOptions {
-    limit?: number;
-    weights?: {
-        content?: number;
-        summary?: number;
-        title?: number;
-    };
-    filter?: {
-        tags?: string[];
-    };
-}
+// Re-export types from core/types/vector
+export type {
+    MultiVectorItem,
+    SearchResult,
+    SearchOptions,
+    VectorBackend
+} from '@core/types/vector';
 
 // Re-export constants for convenience
 export { VECTOR_NAMES, DEFAULT_WEIGHTS } from '@core/constants';
-
-/**
- * Abstract interface for vector storage backends
- */
-export interface VectorBackend {
-    /**
-     * Initialize the backend (create tables/collections if needed)
-     */
-    initialize(): Promise<void>;
-
-    /**
-     * Insert or update with multiple named vectors
-     */
-    upsertMultiVector(item: MultiVectorItem): Promise<void>;
-
-    /**
-     * Search with Named Vectors fusion (RRF)
-     */
-    searchWithFusion(
-        queryVector: number[],
-        options?: SearchOptions
-    ): Promise<SearchResult[]>;
-
-    /**
-     * Delete by chunk ID
-     */
-    delete(id: string): Promise<void>;
-
-    /**
-     * Delete all chunks for a file
-     */
-    deleteByFilePath(filePath: string): Promise<void>;
-
-    /**
-     * Get total count of vectors
-     */
-    count(): Promise<number>;
-
-    /**
-     * Clear all data
-     */
-    clear(): Promise<void>;
-}
 
 /**
  * RRF (Reciprocal Rank Fusion) implementation

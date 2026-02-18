@@ -6,10 +6,11 @@
 import type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult } from '@core/types/embedding';
 import { MODEL_DIMENSIONS } from '@core/types/embedding';
 import { getErrorMessage } from '@utils/error';
+import type { HealthCheckResult, HealthCheckable } from '@core/types/health-check';
 
 export type { EmbeddingProvider, EmbeddingConfig, BatchEmbeddingResult };
 
-export class EmbeddingService {
+export class EmbeddingService implements HealthCheckable {
     private config: EmbeddingConfig;;
 
     constructor(config: EmbeddingConfig) {
@@ -48,6 +49,46 @@ export class EmbeddingService {
      */
     getDimension(): number {
         return this.config.dimension || 768;
+    }
+
+    /**
+     * Check connection to the embedding service
+     */
+    async checkConnection(): Promise<HealthCheckResult> {
+        try {
+            if (this.config.provider === 'ollama') {
+                const response = await fetch(`${this.config.ollamaUrl}/api/tags`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return {
+                    connected: true,
+                    message: `Ollama 已连接 (${this.config.ollamaModel})`,
+                    detail: `URL: ${this.config.ollamaUrl}`
+                };
+            } else if (this.config.provider === 'openai') {
+                const response = await fetch('https://api.openai.com/v1/embeddings', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.config.openaiApiKey}` },
+                    body: JSON.stringify({
+                        model: this.config.openaiModel,
+                        input: 'test'
+                    })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return {
+                    connected: true,
+                    message: `OpenAI 已连接 (${this.config.openaiModel})`,
+                    detail: 'API Key configured'
+                };
+            } else {
+                throw new Error(`Unknown provider: ${this.config.provider}`);
+            }
+        } catch (error: any) {
+            return {
+                connected: false,
+                message: `${this.config.provider} 连接失败: ${error.message}`,
+                detail: error.code || error.toString()
+            };
+        }
     }
 
     /**

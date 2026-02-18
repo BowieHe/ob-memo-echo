@@ -15,10 +15,11 @@ import {
 	METADATA_CONSTRAINTS,
 } from "@core/constants";
 import { BaseModelConfig } from "@core/types/setting";
+import type { HealthCheckResult, HealthCheckable } from "@core/types/health-check";
 
 export type { ExtractedMetadata, MetadataExtractorConfig };
 
-export class MetadataExtractor {
+export class MetadataExtractor implements HealthCheckable {
 	private config: BaseModelConfig;
 
 	constructor(config: BaseModelConfig) {
@@ -83,6 +84,53 @@ export class MetadataExtractor {
 		} catch (error) {
 			console.warn(`${this.config.provider} concept extraction failed`, error);
 			return [];
+		}
+	}
+
+	/**
+	 * Check connection to the LLM service
+	 */
+	async checkConnection(): Promise<HealthCheckResult> {
+		try {
+			const url = this.config.baseUrl;
+			const model = this.config.model;
+
+			if (this.config.provider === 'ollama') {
+				const response = await fetch(`${url}/api/tags`);
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				return {
+					connected: true,
+					message: `Ollama LLM 已连接 (${model})`,
+					detail: `URL: ${url}`
+				};
+			} else if (this.config.provider === 'openai') {
+				const response = await fetch(`${url}/chat/completions`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${this.config.apiKey}`
+					},
+					body: JSON.stringify({
+						model: model,
+						messages: [{ role: 'user', content: 'hi' }],
+						max_tokens: 1
+					})
+				});
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				return {
+					connected: true,
+					message: `OpenAI LLM 已连接 (${model})`,
+					detail: 'API Key configured'
+				};
+			} else {
+				throw new Error(`Unknown provider: ${this.config.provider}`);
+			}
+		} catch (error: any) {
+			return {
+				connected: false,
+				message: `${this.config.provider} LLM 连接失败: ${error.message}`,
+				detail: error.code || error.toString()
+			};
 		}
 	}
 

@@ -4,6 +4,7 @@
  */
 
 import type { VECTOR_NAMES } from '@core/constants';
+import type { HealthCheckable } from './health-check';
 
 /**
  * Multi-vector item for indexing with named vectors
@@ -43,7 +44,7 @@ export interface SearchOptions {
  * Abstract interface for vector storage backends
  * Implementations: QdrantBackend, LanceDBBackend, etc.
  */
-export interface VectorBackend {
+export interface VectorBackend extends HealthCheckable {
     /**
      * Initialize the backend (create tables/collections if needed)
      */
