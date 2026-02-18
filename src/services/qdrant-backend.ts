@@ -49,6 +49,9 @@ export class QdrantBackend implements VectorBackend {
         }
 
         const uuid = generateUUID();
+        const vectorKeys = Object.keys(item.vectors);
+
+        console.log(`[DEBUG] Upserting chunk: ${item.id}, vectors: ${vectorKeys.join(", ")}`);
 
         await this.client.upsert(this.collectionName, {
             points: [
@@ -58,6 +61,7 @@ export class QdrantBackend implements VectorBackend {
                         [VECTOR_NAMES.CONTENT]: item.vectors[VECTOR_NAMES.CONTENT],
                         [VECTOR_NAMES.SUMMARY]: item.vectors[VECTOR_NAMES.SUMMARY],
                         [VECTOR_NAMES.TITLE]: item.vectors[VECTOR_NAMES.TITLE],
+                        [VECTOR_NAMES.TAG]: item.vectors[VECTOR_NAMES.TAG],
                     },
                     payload: {
                         ...item.metadata,
@@ -66,6 +70,8 @@ export class QdrantBackend implements VectorBackend {
                 },
             ],
         });
+
+        console.log(`[DEBUG] Upserted successfully: ${item.id}`);
     }
 
     private async ensureCollection(dimension: number): Promise<void> {
@@ -78,17 +84,23 @@ export class QdrantBackend implements VectorBackend {
             // Collection doesn't exist, try to create it
             console.log(`[Qdrant] Collection doesn't exist, creating with Named Vectors, dimension ${dimension}`);
             try {
+                console.log('[DEBUG] Creating collection config:');
+
                 await this.client.createCollection(this.collectionName, {
                     vectors: {
                         // Chunk vectors
                         [VECTOR_NAMES.CONTENT]: { size: dimension, distance: 'Cosine' },
                         [VECTOR_NAMES.SUMMARY]: { size: dimension, distance: 'Cosine' },
                         [VECTOR_NAMES.TITLE]: { size: dimension, distance: 'Cosine' },
+                        // Tag vector (v0.8.0)
+                        [VECTOR_NAMES.TAG]: { size: dimension, distance: 'Cosine' },
                         // Concept vectors (v0.7.0+)
                         concept_vec: { size: dimension, distance: 'Cosine' },
                         concept_summary_vec: { size: dimension, distance: 'Cosine' },
                     },
                 });
+
+                console.log(`[DEBUG]   tag_vec included: true`);
                 console.log('[Qdrant] Collection created successfully');
             } catch (createError: any) {
                 console.error('[Qdrant] Failed to create collection:', createError);

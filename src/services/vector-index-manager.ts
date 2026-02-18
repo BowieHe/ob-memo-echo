@@ -121,7 +121,19 @@ export class VectorIndexManager {
 
 		// 🆕 Extract me_concepts from full text
 		const me_concepts = await this.metadataExtractor.extractConceptsFromFullText(content);
-		const concepts: ExtractedConceptDetail[] = [];
+		console.log(`[DEBUG] me_concepts extracted: ${me_concepts.length} concepts`);
+
+		// ✅ 转换为 ExtractedConceptDetail[] 格式
+		const concepts: ExtractedConceptDetail[] = me_concepts.map((mc, index) => ({
+			name: this.extractConceptNameFromRawText(mc.raw_text),
+			confidence: 0.8, // 固定置信度
+			reason: mc.reason,
+		}));
+
+		console.log(`[DEBUG] Converted to ExtractedConceptDetail[]: ${concepts.length} concepts`);
+		concepts.forEach((c, i) => {
+			console.log(`[DEBUG]   [${i + 1}] ${c.name} (confidence: ${c.confidence}): ${c.reason}`);
+		});
 
 		for (const chunk of chunks) {
 			try {
@@ -168,8 +180,17 @@ export class VectorIndexManager {
 
 		return {
 			chunks,
-			concepts,
+			concepts,  // ✅ 返回转换后的 concepts
 		};
+	}
+
+	/**
+	 * Extract concept name from raw wikilink text
+	 * Example: "[[虚拟机]]" -> "虚拟机"
+	 */
+	private extractConceptNameFromRawText(rawText: string): string {
+		const match = rawText.match(/\[\[([^\]]+)\]\]/);
+		return match ? match[1] : rawText;
 	}
 
 	/**
@@ -262,6 +283,18 @@ export class VectorIndexManager {
 			},
 			metadata: payload,
 		};
+
+		// Debug logs
+		console.log('[DEBUG] tag_vec generated: dimension=' + tagVector.length + ', source="' + extractedMetadata.me_tag.join(", ") + '"');
+		console.log('[DEBUG] payload summary:');
+		console.log('[DEBUG]   - me_tag: ' + extractedMetadata.me_tag.join(", "));
+		console.log('[DEBUG]   - tags: ' + [...extractedMetadata.me_tag, extractedMetadata.category].filter(Boolean).join(", "));
+		console.log('[DEBUG]   - me_concepts: ' + me_concepts.length + ' items');
+		console.log('[DEBUG] vectors prepared:');
+		console.log('[DEBUG]   - content_vec: ' + contentEmbedding.length + 'D');
+		console.log('[DEBUG]   - summary_vec: ' + summaryEmbedding.length + 'D');
+		console.log('[DEBUG]   - title_vec: ' + titleEmbedding.length + 'D');
+		console.log('[DEBUG]   - tag_vec: ' + tagVector.length + 'D ✅');
 
 		this.persistQueue.enqueueMultiVector(queuedChunk);
 	}

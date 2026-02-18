@@ -59,6 +59,12 @@ export class PersistQueue {
      * Add multi-vector chunk to queue (v0.4.0)
      */
     enqueueMultiVector(chunk: MultiVectorQueuedChunk): void {
+        console.log(`[DEBUG] EnqueueMultiVector: id=${chunk.id}`);
+        console.log(`[DEBUG]   - vectors: ${Object.keys(chunk.vectors).join(", ")}`);
+        console.log(`[DEBUG]   - tag_vec present: ${!!chunk.vectors[VECTOR_NAMES.TAG]}`);
+        console.log(`[DEBUG]   - me_tag: ${chunk.metadata.me_tag?.join(", ") || 'none'}`);
+        console.log(`[DEBUG]   - me_concepts: ${chunk.metadata.me_concepts?.length || 0} items`);
+
         this.multiVectorQueue.set(chunk.id, chunk);
 
         // Auto-flush if batch size reached
@@ -187,16 +193,25 @@ export class PersistQueue {
         }
 
         const chunks = Array.from(this.multiVectorQueue.values());
+        console.log(`[DEBUG] FlushMultiVector: ${chunks.length} chunks to Qdrant`);
 
         try {
             // Upsert each multi-vector item
             for (const chunk of chunks) {
+                console.log(`[DEBUG]   Upserting: ${chunk.id}`);
+                console.log(`[DEBUG]     - vectors: ${Object.keys(chunk.vectors).join(", ")}`);
+                console.log(`[DEBUG]     - has tag_vec: ${!!chunk.vectors[VECTOR_NAMES.TAG]}`);
+                console.log(`[DEBUG]     - me_tag: ${chunk.metadata.me_tag?.join(", ") || 'none'}`);
+                console.log(`[DEBUG]     - me_concepts: ${chunk.metadata.me_concepts?.length || 0} items`);
+
                 await this.backend.upsertMultiVector({
                     id: chunk.id,
                     vectors: chunk.vectors,
                     metadata: chunk.metadata,
                 });
             }
+
+            console.log(`[DEBUG] FlushMultiVector completed: ${chunks.length} chunks flushed`);
 
             // Update stats
             this.stats.totalFlushed += chunks.length;
@@ -205,6 +220,7 @@ export class PersistQueue {
             // Clear queue after successful flush
             this.multiVectorQueue.clear();
         } catch (error) {
+            console.error(`[DEBUG] FlushMultiVector failed:`, error);
             this.stats.failedFlushes++;
             throw error;
         }

@@ -66,12 +66,20 @@ export class MetadataExtractor {
 			return [];
 		}
 
+		console.log('[DEBUG] Extracting me_concepts from full text...');
+		console.log(`[DEBUG] Content length: ${content.length} chars`);
+
 		try {
-			if (this.config.provider === "openai") {
-				return await this.extractConceptsWithOpenAI(content);
-			} else {
-				return await this.extractConceptsWithOllama(content);
-			}
+			const me_concepts = this.config.provider === "openai"
+				? await this.extractConceptsWithOpenAI(content)
+				: await this.extractConceptsWithOllama(content);
+
+			console.log(`[DEBUG] Extracted ${me_concepts.length} me_concepts`);
+			me_concepts.forEach((c, i) => {
+				console.log(`[DEBUG]   [${i + 1}] ${c.raw_text}: ${c.reason}`);
+			});
+
+			return me_concepts;
 		} catch (error) {
 			console.warn(`${this.config.provider} concept extraction failed`, error);
 			return [];
@@ -254,6 +262,9 @@ ${truncatedContent}
 		const url = this.config.baseUrl || "http://localhost:11434";
 		const model = this.config.model || "llama3:4b";
 
+		console.log(`[DEBUG] Calling Ollama API: ${url}/api/generate, model=${model}`);
+		console.log(`[DEBUG] Prompt (first 200 chars): ${prompt.substring(0, 200)}...`);
+
 		const response = await fetch(`${url}/api/generate`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -265,6 +276,8 @@ ${truncatedContent}
 			}),
 		});
 
+		console.log('[DEBUG] Ollama API response received');
+
 		if (!response.ok) {
 			throw new Error(`Ollama API error: ${response.statusText}`);
 		}
@@ -272,7 +285,9 @@ ${truncatedContent}
 		const data = await response.json();
 		try {
 			const result = JSON.parse(data.response);
-			return result.me_concepts || [];
+			const concepts = result.me_concepts || [];
+			console.log(`[DEBUG] Parsed ${concepts.length} concepts from response`);
+			return concepts;
 		} catch (error) {
 			console.warn("Failed to parse concepts from Ollama:", error);
 			return [];
@@ -289,6 +304,9 @@ ${truncatedContent}
 		const url = this.config.baseUrl || "https://api.openai.com/v1";
 		const model = this.config.model || "gpt-5-turbo";
 		const apiKey = this.config.apiKey || "";
+
+		console.log(`[DEBUG] Calling OpenAI API: ${url}/chat/completions, model=${model}`);
+		console.log(`[DEBUG] Prompt (first 200 chars): ${prompt.substring(0, 200)}...`);
 
 		const response = await fetch(`${url}/chat/completions`, {
 			method: "POST",
@@ -310,6 +328,8 @@ ${truncatedContent}
 			}),
 		});
 
+		console.log('[DEBUG] OpenAI API response received');
+
 		if (!response.ok) {
 			throw new Error(`OpenAI API error: ${response.statusText}`);
 		}
@@ -319,7 +339,9 @@ ${truncatedContent}
 			const contentStr = data.choices[0]?.message?.content || "{}";
 			const cleanJson = contentStr.replace(/```json\n?|\n?```/g, "");
 			const result = JSON.parse(cleanJson);
-			return result.me_concepts || [];
+			const concepts = result.me_concepts || [];
+			console.log(`[DEBUG] Parsed ${concepts.length} concepts from response`);
+			return concepts;
 		} catch (error) {
 			console.warn("Failed to parse concepts from OpenAI:", error);
 			return [];
