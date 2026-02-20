@@ -25,6 +25,7 @@ import type { BaseModelConfig } from "./core/types/setting";
 import { SettingsManager } from "./core/settings/settings-manager";
 import { getErrorMessage } from "@utils/error";
 import { ContentPreprocessor } from "./services/content-preprocessor";
+import { deduplicateConcepts } from "./utils/concept-utils";
 import { SemanticChunker } from "./services/semantic-chunker";
 
 export default class MemoEchoPlugin extends Plugin {
@@ -565,22 +566,8 @@ export default class MemoEchoPlugin extends Plugin {
 
 		return {
 			note: { path: file.path, title: file.basename, content },
-			concepts: this.deduplicateConceptMatches(concepts),
+			concepts: deduplicateConcepts(concepts),
 		};
-	}
-
-	private deduplicateConceptMatches(
-		concepts: ExtractedConceptWithMatch[],
-	): ExtractedConceptWithMatch[] {
-		const map = new Map<string, ExtractedConceptWithMatch>();
-		for (const concept of concepts) {
-			const key = concept.name.toLowerCase();
-			const existing = map.get(key);
-			if (!existing || existing.confidence < concept.confidence) {
-				map.set(key, concept);
-			}
-		}
-		return Array.from(map.values());
 	}
 
 	/**

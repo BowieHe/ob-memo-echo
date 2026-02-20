@@ -12,6 +12,7 @@ import {
 	ConceptGroup,
 } from "./ConceptSection";
 import type { ExtractedConceptWithMatch } from "@core/types/concept";
+import { deduplicateConcepts } from "@utils/concept-utils";
 
 const DatabaseIcon: React.FC<{ size?: number; className?: string }> = ({
     size = 20,
@@ -61,35 +62,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         totalConcepts: number;
         isProcessing: boolean;
     } | undefined>();
-
-    // Deduplicate concepts by normalized name within a single file
-    const deduplicateConcepts = (concepts: ExtractedConceptWithMatch[]): ExtractedConceptWithMatch[] => {
-        const conceptMap = new Map<string, ExtractedConceptWithMatch>();
-
-        for (const concept of concepts) {
-            const normalizedName = concept.name.trim().toLowerCase();
-            const existing = conceptMap.get(normalizedName);
-
-            if (!existing) {
-                conceptMap.set(normalizedName, concept);
-            } else if (concept.confidence > existing.confidence) {
-                const reasons = new Set<string>();
-                if (existing.reason?.trim()) reasons.add(existing.reason.trim());
-                if (concept.reason?.trim()) reasons.add(concept.reason.trim());
-                conceptMap.set(normalizedName, {
-                    ...concept,
-                    reason: Array.from(reasons).join("; "),
-                });
-            } else {
-                const reasons = new Set<string>();
-                if (existing.reason?.trim()) reasons.add(existing.reason.trim());
-                if (concept.reason?.trim()) reasons.add(concept.reason.trim());
-                existing.reason = Array.from(reasons).join("; ");
-            }
-        }
-
-        return Array.from(conceptMap.values());
-    };
 
     useEffect(() => {
         const handleAmbientUpdate = (event: CustomEvent<SearchResult[]>) => {
