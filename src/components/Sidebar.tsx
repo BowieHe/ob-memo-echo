@@ -1,11 +1,17 @@
 /**
  * Sidebar - Search and related notes component
  * v0.7.0: Updated to use SearchService instead of VectorIndexManager
+ * Panel Combination Phase 3: Integrated ConceptSection
  */
 
 import React, { useState, useEffect } from "react";
 import type { SearchResult } from "@services/search-service";
 import { SearchService } from "@services/search-service";
+import {
+	ConceptSection,
+	ConceptGroup,
+} from "./ConceptSection";
+import type { ExtractedConceptWithMatch } from "@core/types/concept";
 
 const DatabaseIcon: React.FC<{ size?: number; className?: string }> = ({
     size = 20,
@@ -31,13 +37,11 @@ const DatabaseIcon: React.FC<{ size?: number; className?: string }> = ({
 interface SidebarProps {
     searchService: SearchService;
     initialMode?: "ambient" | "search";
-    onIndexCurrent?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
     searchService,
     initialMode = "ambient",
-    onIndexCurrent,
 }: SidebarProps) => {
     const [mode, setMode] = useState<"ambient" | "search">(
         initialMode as "ambient" | "search",
@@ -46,7 +50,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [ambientResults, setAmbientResults] = useState<SearchResult[]>([]);
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [isIndexing, setIsIndexing] = useState(false);
+
+    // Concept states
+    const [isConceptExpanded, setIsConceptExpanded] = useState(false);
+    const [extractedConcepts, setExtractedConcepts] = useState<ConceptGroup[]>([]);
+    const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+    const [batchProgress, setBatchProgress] = useState<{
+        totalFiles: number;
+        processedFiles: number;
+        totalConcepts: number;
+        isProcessing: boolean;
+    } | undefined>();
+
+    // Deduplicate concepts by normalized name within a single file
+    const deduplicateConcepts = (concepts: ExtractedConceptWithMatch[]): ExtractedConceptWithMatch[] => {
+        const conceptMap = new Map<string, ExtractedConceptWithMatch>();
+
+        for (const concept of concepts) {
+            const normalizedName = concept.name.trim().toLowerCase();
+            const existing = conceptMap.get(normalizedName);
+
+            if (!existing) {
+                conceptMap.set(normalizedName, concept);
+            } else if (concept.confidence > existing.confidence) {
+                const reasons = new Set<string>();
+                if (existing.reason?.trim()) reasons.add(existing.reason.trim());
+                if (concept.reason?.trim()) reasons.add(concept.reason.trim());
+                conceptMap.set(normalizedName, {
+                    ...concept,
+                    reason: Array.from(reasons).join("; "),
+                });
+            } else {
+                const reasons = new Set<string>();
+                if (existing.reason?.trim()) reasons.add(existing.reason.trim());
+                if (concept.reason?.trim()) reasons.add(concept.reason.trim());
+                existing.reason = Array.from(reasons).join("; ");
+            }
+        }
+
+        return Array.from(conceptMap.values());
+    };
 
     useEffect(() => {
         const handleAmbientUpdate = (event: CustomEvent<SearchResult[]>) => {
@@ -55,15 +98,72 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
         };
 
+        // Concept extraction event listener
+        const handleConceptsExtracted = (event: CustomEvent) => {
+            const { note, concepts } = event.detail;
+            setExtractedConcepts([{
+                notePath: note.path,
+                noteTitle: note.title,
+                concepts: deduplicateConcepts(concepts),
+            }]);
+            setIsConceptExpanded(true); // Auto-expand
+        };
+
+        // Batch increment event listener for real-time updates
+        const handleBatchIncrement = (event: CustomEvent) => {
+            const { batch, totalFiles, processedFiles, totalConcepts } = event.detail;
+            setExtractedConcepts(batch.map((r: any) => ({
+                notePath: r.note.path,
+                noteTitle: r.note.title,
+                concepts: deduplicateConcepts(r.concepts),
+            })));
+
+            setBatchProgress({
+                totalFiles,
+                processedFiles,
+                totalConcepts,
+                isProcessing: processedFiles < totalFiles,
+            });
+
+            setIsConceptExpanded(true); // Auto-expand
+        };
+
+        // Batch progress event listener
+        const handleBatchProgress = (event: CustomEvent) => {
+            const { isProcessing } = event.detail;
+            setBatchProgress(prev => ({
+                totalFiles: prev?.totalFiles || 0,
+                processedFiles: prev?.processedFiles || 0,
+                totalConcepts: prev?.totalConcepts || 0,
+                isProcessing,
+            }));
+            setIsBatchProcessing(isProcessing || false);
+        };
+
+        // Batch stop event listener
+        const handleBatchStop = (event: CustomEvent) => {
+            setIsBatchProcessing(false);
+        };
+
         window.addEventListener(
             "memo-echo:ambient-update",
             handleAmbientUpdate as EventListener,
         );
-        return () =>
+        window.addEventListener("memo-echo:concepts-extracted", handleConceptsExtracted as EventListener);
+        window.addEventListener("memo-echo:batch-increment", handleBatchIncrement as EventListener);
+        window.addEventListener("memo-echo:batch-progress", handleBatchProgress as EventListener);
+        window.addEventListener("memo-echo:batch-stop", handleBatchStop as EventListener);
+
+        return () => {
             window.removeEventListener(
                 "memo-echo:ambient-update",
                 handleAmbientUpdate as EventListener,
             );
+            window.removeEventListener("memo-echo:concepts-extracted", handleConceptsExtracted as EventListener);
+            window.removeEventListener("memo-echo:batch-increment", handleBatchIncrement as EventListener);
+            window.removeEventListener("memo-echo:batch-progress", handleBatchProgress as EventListener);
+            window.removeEventListener("memo-echo:batch-stop", handleBatchStop as EventListener);
+        };
     }, [mode]);
 
     const handleSearch = async (query: string) => {
@@ -102,31 +202,87 @@ export const Sidebar: React.FC<SidebarProps> = ({
         setMode("ambient");
     };
 
-    const handleIndexCurrent = async () => {
-        if (isIndexing) return;
-
-        if (onIndexCurrent) {
-            setIsIndexing(true);
-            try {
-                await onIndexCurrent();
-            } finally {
-                setIsIndexing(false);
-            }
-        } else {
-            // Fallback to event for backward compatibility
-            setIsIndexing(true);
-            try {
-                window.dispatchEvent(
-                    new CustomEvent("memo-echo:index-current-file"),
-                );
-            } finally {
-                setIsIndexing(false);
-            }
+    const handleExtractCurrentFile = async () => {
+        setIsBatchProcessing(true);
+        try {
+            window.dispatchEvent(new CustomEvent("memo-echo:concepts-extract-current"));
+        } finally {
+            setIsBatchProcessing(false);
         }
+    };
+
+    const handleBatchExtract = async () => {
+        if (isBatchProcessing) {
+            window.dispatchEvent(new CustomEvent("memo-echo:batch-stop-request"));
+            return;
+        }
+        setIsBatchProcessing(true);
+        try {
+            window.dispatchEvent(new CustomEvent("memo-echo:batch-extract-all"));
+        } finally {
+            setIsBatchProcessing(false);
+        }
+    };
+
+    const handleStopBatch = () => {
+        window.dispatchEvent(new CustomEvent("memo-echo:batch-stop-request"));
+    };
+
+    const handleApplyConcepts = async (groups: ConceptGroup[]) => {
+        window.dispatchEvent(
+            new CustomEvent("memo-echo:batch-concepts-apply", {
+                detail: { groups },
+            }),
+        );
+
+        setExtractedConcepts([]);
+    };
+
+    const handleClearConcepts = () => {
+        setExtractedConcepts([]);
+    };
+
+    const handleRejectConcept = (conceptName: string, notePath: string) => {
+        setExtractedConcepts(extractedConcepts
+            .map((group) => {
+                if (group.notePath === notePath) {
+                    return {
+                        ...group,
+                        concepts: group.concepts.filter(
+                            (c) => c.name !== conceptName,
+                        ),
+                    };
+                }
+                return group;
+            })
+            .filter((group) => group.concepts.length > 0));
+    };
+
+    const handleApplySingleConcept = async (group: ConceptGroup) => {
+        window.dispatchEvent(
+            new CustomEvent("memo-echo:single-concept-apply", {
+                detail: { group },
+            }),
+        );
+
+        setExtractedConcepts(extractedConcepts
+            .map((g) => {
+                if (g.notePath === group.notePath) {
+                    return {
+                        ...g,
+                        concepts: g.concepts.filter(
+                            (c) => c.name !== group.concepts[0]?.name,
+                        ),
+                    };
+                }
+                return g;
+            })
+            .filter((g) => g.concepts.length > 0));
     };
 
     return (
         <div className="memo-echo-sidebar">
+            {/* Search box + button group */}
             <div className="memo-echo-search-box">
                 <input
                     type="text"
@@ -135,6 +291,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                 />
+                {/* Extract current file button (NEW) */}
+                <button
+                    onClick={handleExtractCurrentFile}
+                    className="memo-echo-icon-btn"
+                    title="提取当前文件的概念"
+                >
+                    📄
+                </button>
+                {/* Batch extract button */}
+                <button
+                    onClick={handleBatchExtract}
+                    className="memo-echo-icon-btn"
+                    title={isBatchProcessing ? "停止批量提取" : "批量提取所有文件的概念"}
+                >
+                    {isBatchProcessing ? "🛑" : "📚"}
+                </button>
+                {/* Search button */}
                 <button
                     onClick={handleSearchButtonClick}
                     className="memo-echo-search-btn"
@@ -143,6 +316,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                     <span style={{ fontSize: "14px", lineHeight: "1" }}>🔍</span>
                 </button>
+                {/* Clear search button */}
                 {mode === "search" && (
                     <button
                         onClick={handleClearSearch}
@@ -152,28 +326,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span style={{ fontSize: "14px", lineHeight: "1" }}>✕</span>
                     </button>
                 )}
-                <button
-                    onClick={handleIndexCurrent}
-                    className="memo-echo-index-primary-btn"
-                    disabled={isIndexing}
-                    title="向量化当前笔记 + 提取概念"
-                >
-                    {isIndexing ? (
-                        <span className="memo-echo-index-btn-content">
-                            <span className="memo-echo-spinner">⏳</span>
-                            <span>索引中...</span>
-                        </span>
-                    ) : (
-                        <span className="memo-echo-index-btn-content">
-                            <DatabaseIcon
-                                size={14}
-                                className="memo-echo-index-icon"
-                            />
-                        </span>
-                    )}
-                </button>
             </div>
 
+            {/* Concept section - conditional rendering */}
+            {(extractedConcepts.length > 0 || isBatchProcessing) && (
+                <ConceptSection
+                    isExpanded={isConceptExpanded}
+                    onToggleExpand={() => setIsConceptExpanded(!isConceptExpanded)}
+                    extractedConcepts={extractedConcepts}
+                    batchProgress={batchProgress}
+                    onApplyConcepts={handleApplyConcepts}
+                    onClearConcepts={handleClearConcepts}
+                    onRejectConcept={handleRejectConcept}
+                    onApplySingleConcept={handleApplySingleConcept}
+                    isBatchProcessing={isBatchProcessing}
+                    onStopBatch={handleStopBatch}
+                />
+            )}
+
+            {/* Search results */}
             <div className="memo-echo-results-container">
                 {isLoading && (
                     <div className="memo-echo-loading">加载中...</div>
