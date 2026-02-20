@@ -122,21 +122,32 @@ export class FrontmatterService {
         const frontmatter = cache?.frontmatter || {};
         const existingConcepts = frontmatter.me_concepts || [];
 
+        console.log(`[FrontmatterService] Setting concepts for ${file.path}:`, concepts);
+        console.log(`[FrontmatterService] Existing concepts:`, existingConcepts);
+
         const newNames = new Set(
             existingConcepts.map((c: any) => c.match(/\[\/|\\|\|,]\]\]/g))
         );
 
         for (const concept of concepts) {
-            if (newNames.has(concept)) {
+            if (!newNames.has(concept)) {
                 newNames.add(concept);
             }
         }
 
+        const finalConcepts = Array.from(newNames).map(
+            c => `[[${this.conceptPagePrefix}/${c}]]`
+        );
+
+        console.log(`[FrontmatterService] Final concepts to write:`, finalConcepts);
+
         await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            frontmatter.me_concepts = Array.from(newNames).map(
-                c => `[[${this.conceptPagePrefix}/${c}]]`
-            );
+            frontmatter.me_concepts = finalConcepts;
         });
+
+        // 🔍 Verify write result
+        const updatedCache = this.app.metadataCache.getFileCache(file);
+        console.log(`[FrontmatterService] Updated frontmatter:`, updatedCache?.frontmatter?.me_concepts);
     }
 
     /**

@@ -129,23 +129,31 @@ export class ConceptRegistry {
         }
 
         if (looseMatches.length > 0) {
-            try {
-                await this.qdrant.updateConceptUsageWithVectors(
-                    looseMatches[0].payload.concept,
-                    conceptVector,
-                    summaryVector
-                );
-                console.log(`[ConceptRegistry] Matched existing concept (loose): "${looseMatches[0].payload.concept}"`);
-            } catch (error: any) {
-                console.warn(`[ConceptRegistry] Failed to update usage count:`, error?.message || error);
+            const match = looseMatches[0];
+
+            // 🔍 Extra validation: Score must be high enough (≥ 0.92)
+            if (match.score < 0.92) {
+                console.log(`[ConceptRegistry] Loose match score too low: ${match.score} < 0.92, creating new concept`);
+                // Continue to create new concept
+            } else {
+                try {
+                    await this.qdrant.updateConceptUsageWithVectors(
+                        match.payload.concept,
+                        conceptVector,
+                        summaryVector
+                    );
+                    console.log(`[ConceptRegistry] Matched existing concept (loose): "${match.payload.concept}" (score: ${match.score})`);
+                } catch (error: any) {
+                    console.warn(`[ConceptRegistry] Failed to update usage count:`, error?.message || error);
+                }
+                return {
+                    matched: true,
+                    concept: match.payload.concept,
+                    summary: match.payload.summary,
+                    similarity: match.score,
+                    isNew: false,
+                };
             }
-            return {
-                matched: true,
-                concept: looseMatches[0].payload.concept,
-                summary: looseMatches[0].payload.summary,
-                similarity: looseMatches[0].score,
-                isNew: false,
-            };
         }
 
         // 4. No match, create new concept
