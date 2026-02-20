@@ -7,6 +7,7 @@ import { VIEW_TYPE_INDEX_SEARCH } from "../core/constants";
 
 /**
  * IndexSearchView - Search and display related notes
+ * Panel Combination Phase 4: Simplified (removed onIndexCurrentFile callback)
  *
  * Behavior:
  * - When search box is empty: Shows related notes (concept/summary/title based)
@@ -14,18 +15,15 @@ import { VIEW_TYPE_INDEX_SEARCH } from "../core/constants";
  */
 export class IndexSearchView extends ItemView {
 	private searchService: SearchService;
-	private onIndexCurrentFile: () => Promise<void>;
 	private container!: HTMLElement;
 	private root: Root | null = null;
 
 	constructor(
 		leaf: WorkspaceLeaf,
 		searchService: SearchService,
-		onIndexCurrentFile?: () => Promise<void>,
 	) {
 		super(leaf);
 		this.searchService = searchService;
-		this.onIndexCurrentFile = onIndexCurrentFile || (() => Promise.resolve());
 	}
 
 	getViewType(): string {
@@ -61,11 +59,6 @@ export class IndexSearchView extends ItemView {
 
 		// Listen for file open events from React
 		window.addEventListener("memo-echo:open-file", this.handleOpenFile);
-		// Listen for index current file button click
-		window.addEventListener(
-			"memo-echo:index-current-file",
-			this.handleIndexCurrentFile,
-		);
 	}
 
 	private renderReact() {
@@ -77,14 +70,13 @@ export class IndexSearchView extends ItemView {
 				return;
 			}
 
-			this.root = createRoot(this.container);
-			this.root.render(
-				React.createElement(Sidebar, {
-					searchService: this.searchService,
-					initialMode: "ambient", // Start with ambient mode (empty search)
-					onIndexCurrent: this.handleIndexCurrentFile,
-				}),
-			);
+		this.root = createRoot(this.container);
+		this.root.render(
+			React.createElement(Sidebar, {
+				searchService: this.searchService,
+				initialMode: "ambient", // Start with ambient mode (empty search)
+			}),
+		);
 
 			console.log(
 				"[IndexSearchView] ✅ React component mounted successfully",
@@ -102,18 +94,7 @@ export class IndexSearchView extends ItemView {
 			this.root.unmount();
 		}
 		window.removeEventListener("memo-echo:open-file", this.handleOpenFile);
-		window.removeEventListener(
-			"memo-echo:index-current-file",
-			this.handleIndexCurrentFile,
-		);
 	}
-
-	/**
-	 * Handle index current file button click
-	 */
-	private handleIndexCurrentFile = () => {
-		return this.onIndexCurrentFile();
-	};
 
 	/**
 	 * Handle file open event from React
