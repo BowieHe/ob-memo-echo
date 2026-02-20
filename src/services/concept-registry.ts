@@ -183,61 +183,6 @@ export class ConceptRegistry {
     }
 
     /**
-     * Batch register/match concepts
-     */
-    async registerOrMatchBatch(
-        items: Array<{ concept: string; reason: string }>
-    ): Promise<ConceptMatchResult[]> {
-        const results: ConceptMatchResult[] = [];
-
-        for (const item of items) {
-            const result = await this.registerOrMatch(item.concept, item.reason);
-            results.push(result);
-        }
-
-        return results;
-    }
-
-    /**
-     * Get all concepts
-     */
-    async getAllConcepts(): Promise<ConceptRecord[]> {
-        const concepts: ConceptRecord[] = [];
-        let nextPage: string | null = null;
-
-        do {
-            const result = await this.qdrant.scrollConcepts({ limit: 100, offset: nextPage || undefined });
-            concepts.push(...result.points.map(p => p.payload));
-            nextPage = result.nextPage;
-        } while (nextPage);
-
-        return concepts;
-    }
-
-    /**
-     * Get single concept details
-     */
-    async getConcept(concept: string): Promise<ConceptRecord | null> {
-        const result = await this.qdrant.getConcept(concept);
-        return result?.payload ?? null;
-    }
-
-    /**
-     * Update concept usage count
-     */
-    async updateUsage(concept: string): Promise<void> {
-        // Note: This method requires re-embedding
-        // Consider caching vectors if this becomes a performance issue
-        const conceptVector = await this.embeddingService.embed(concept);
-        const existing = await this.qdrant.getConcept(concept);
-
-        if (existing) {
-            const summaryVector = await this.embeddingService.embed(existing.payload.summary);
-            await this.qdrant.updateConceptUsageWithVectors(concept, conceptVector, summaryVector);
-        }
-    }
-
-    /**
      * Update options
      */
     updateOptions(options: Partial<ConceptRegistryOptions>): void {
