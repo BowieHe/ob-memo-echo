@@ -1,6 +1,5 @@
 import { Plugin, TFile, Notice } from "obsidian";
 import { IndexSearchView } from "./views/index-search-view";
-import { ConceptView } from "./views/concept-view";
 import {
 	MemoEchoSettingTab,
 	MemoEchoSettings,
@@ -12,7 +11,7 @@ import { QdrantBackend } from "./services/qdrant-backend";
 import { Chunker } from "./services/chunker";
 import { MetadataExtractor } from "./services/metadata-extractor";
 import { VectorIndexManager } from "./services/vector-index-manager";
-import { VIEW_TYPE_INDEX_SEARCH, VIEW_TYPE_CONCEPT } from "./core/constants";
+import { VIEW_TYPE_INDEX_SEARCH } from "./core/constants";
 import { ParagraphDetector } from "./services/paragraph-detector";
 import { FrontmatterService } from "./services/frontmatter-service";
 import { ConceptRegistry } from "./services/concept-registry";
@@ -30,7 +29,6 @@ import { SemanticChunker } from "./services/semantic-chunker";
 
 export default class MemoEchoPlugin extends Plugin {
 	private indexSearchView: IndexSearchView | null = null;
-	private conceptView: ConceptView | null = null;
 
 	// Settings
 	settings!: MemoEchoSettings;
@@ -222,32 +220,13 @@ export default class MemoEchoPlugin extends Plugin {
 			this.indexSearchView = new IndexSearchView(
 				leaf,
 				this.searchService,
-				this.indexCurrentFileWithConcepts,
 			);
 			return this.indexSearchView;
-		});
-
-		// v0.7.0: Register concept confirmation view
-		this.registerView(VIEW_TYPE_CONCEPT, (leaf) => {
-			this.conceptView = new ConceptView(
-				leaf,
-				this.frontmatterService,
-				() => this.settings,
-				() => this.saveSettings(),
-				this.handleCurrentFileAssociation,
-				this.handleAllFilesAssociation,
-			);
-			return this.conceptView;
 		});
 
 		// Add ribbon icon for unified search (search + recommendations)
 		this.addRibbonIcon("search", "检索", () => {
 			this.activateUnifiedSearchView();
-		});
-
-		// v0.6.0: Add ribbon icon for associations
-		this.addRibbonIcon("link-2", "关联建议", () => {
-			this.activateAssociationView();
 		});
 
 		// Add command to open unified search view
@@ -256,15 +235,6 @@ export default class MemoEchoPlugin extends Plugin {
 			name: "打开检索",
 			callback: () => {
 				this.activateUnifiedSearchView();
-			},
-		});
-
-		// v0.6.0: Add command to open association view
-		this.addCommand({
-			id: "open-associations",
-			name: "打开关联建议",
-			callback: () => {
-				this.activateAssociationView();
 			},
 		});
 
@@ -295,7 +265,6 @@ export default class MemoEchoPlugin extends Plugin {
 		}
 
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_INDEX_SEARCH);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONCEPT);
 	}
 
 	async activateUnifiedSearchView() {
@@ -347,56 +316,6 @@ export default class MemoEchoPlugin extends Plugin {
 			this.settings.conceptFE.conceptPagePrefix,
 		);
 	}
-
-	// v0.6.0: Activate association view
-	async activateAssociationView() {
-		const { workspace } = this.app;
-		console.log("[MemoEcho] 💡 Activating concept association view");
-
-		let leaf = workspace.getLeavesOfType(VIEW_TYPE_CONCEPT)[0];
-
-		if (!leaf) {
-			console.log("[MemoEcho] No existing leaf found, creating new one");
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				await rightLeaf.setViewState({
-					type: VIEW_TYPE_CONCEPT,
-					active: true,
-				});
-				leaf = rightLeaf;
-				console.log(
-					"[MemoEcho] ✅ New leaf created and view state set",
-				);
-			} else {
-				console.error("[MemoEcho] ❌ Failed to get right leaf");
-				new Notice("❌ 无法打开侧边栏");
-				return;
-			}
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			console.log("[MemoEcho] ✅ Concept association view revealed");
-		}
-	}
-
-	/**
-	 * Handle association for current file
-	 */
-	private handleCurrentFileAssociation = async (): Promise<void> => {
-		const activeFile = this.app.workspace.getActiveFile();
-
-		if (!activeFile) {
-			new Notice("❌ 没有打开的文件");
-			return;
-		}
-
-		console.log(
-			"[MemoEcho] Association current file requested:",
-			activeFile.path,
-		);
-		await this.processFileAndDispatch(activeFile);
-	};
 
 	/**
 	 * Handle association for all files (batch extraction with accumulate mode)

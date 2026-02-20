@@ -21,11 +21,11 @@ export class IndexSearchView extends ItemView {
 	constructor(
 		leaf: WorkspaceLeaf,
 		searchService: SearchService,
-		onIndexCurrentFile: () => Promise<void>,
+		onIndexCurrentFile?: () => Promise<void>,
 	) {
 		super(leaf);
 		this.searchService = searchService;
-		this.onIndexCurrentFile = onIndexCurrentFile;
+		this.onIndexCurrentFile = onIndexCurrentFile || (() => Promise.resolve());
 	}
 
 	getViewType(): string {

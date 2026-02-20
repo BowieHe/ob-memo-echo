@@ -84,7 +84,6 @@ export const SEARCH_DEFAULTS = {
 /**
  * View Type Constants - Obsidian View registration
  */
-export const VIEW_TYPE_CONCEPT = "concept-view";
 export const VIEW_TYPE_INDEX_SEARCH = "index-search-view";
 
 /**
