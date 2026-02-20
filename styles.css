@@ -1435,3 +1435,298 @@
 .memo-echo-file-concepts .memo-echo-concept-item {
     padding: 4px 6px;
 }
+
+/* ============================================================
+   Concept Section Styles (Panel Combination)
+   ============================================================ */
+
+.memo-echo-concept-section {
+    margin-bottom: 16px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.memo-echo-concept-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--background-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.memo-echo-concept-header:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.memo-echo-concept-toggle {
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+
+.memo-echo-concept-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+/* Collapsed state progress */
+.memo-echo-collapsed-progress {
+    padding: 8px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Expanded state content */
+.memo-echo-concept-content {
+    max-height: 500px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+/* Concept list header */
+.memo-echo-concept-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--background-secondary);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Concept action buttons */
+.memo-echo-concept-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.memo-echo-concept-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.memo-echo-concept-btn:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-concept-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.memo-echo-concept-btn-primary {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-concept-btn-primary:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* Stop batch button */
+.memo-echo-stop-btn {
+    width: 100%;
+    padding: 8px 12px;
+    margin: 8px 12px;
+    background-color: var(--background-modifier-error);
+    color: var(--text-error);
+    border: 1px solid var(--background-modifier-error);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.memo-echo-stop-btn:hover {
+    background-color: var(--text-error);
+    color: var(--background-primary);
+}
+
+/* Icon button (for search box) */
+.memo-echo-icon-btn {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.memo-echo-icon-btn:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Concept item styles */
+.memo-echo-concept-item {
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    transition: background-color 0.2s;
+}
+
+.memo-echo-concept-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.memo-echo-concept-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.memo-echo-concept-checkbox input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+
+.memo-echo-concept-name {
+    flex: 1;
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.memo-echo-concept-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-right: 8px;
+}
+
+.memo-echo-concept-item-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.memo-echo-concept-action-btn {
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 3px;
+    background-color: var(--background-primary);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.memo-echo-concept-action-btn:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.memo-echo-concept-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.memo-echo-concept-approve-btn {
+    color: var(--text-success);
+}
+
+.memo-echo-concept-approve-btn:hover {
+    background-color: var(--background-modifier-success);
+    color: var(--text-on-accent);
+}
+
+.memo-echo-concept-reject-btn {
+    color: var(--text-error);
+}
+
+.memo-echo-concept-reject-btn:hover {
+    background-color: var(--background-modifier-error);
+    color: var(--text-on-accent);
+}
+
+.memo-echo-concept-reason {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    padding-left: 24px;
+}
+
+/* Search box layout adjustment */
+.memo-echo-search-box {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.memo-echo-search-box input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.memo-echo-search-box input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-search-box input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Search button */
+.memo-echo-search-btn {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.memo-echo-search-btn:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.memo-echo-search-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Clear search button */
+.memo-echo-clear-btn {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.memo-echo-clear-btn:hover {
+    background-color: var(--background-modifier-hover);
+}
