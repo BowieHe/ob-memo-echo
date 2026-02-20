@@ -59,7 +59,6 @@ declare global {
         // Control events
         'memo-echo:batch-stop-request': CustomEvent<void>;
         'memo-echo:open-file': CustomEvent<SearchResult>;
-        'memo-echo:index-current-file': CustomEvent<void>;
 
         // Search/ambient events
         'memo-echo:ambient-update': CustomEvent<SearchResult[]>;
