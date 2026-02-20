@@ -57,6 +57,10 @@ export default class MemoEchoPlugin extends Plugin {
 	// Settings manager
 	settingsManager!: SettingsManager;
 
+	// Event listener bindings for cleanup
+	private handleConceptsExtractCurrentBound: (() => void) | null = null;
+	private handleBatchExtractAllBound: (() => void) | null = null;
+
 	/**
 	 * Convert BaseModelConfig to EmbeddingConfig for EmbeddingService
 	 */
@@ -245,12 +249,23 @@ export default class MemoEchoPlugin extends Plugin {
 		this.setupConceptEventListeners();
 		this.setupBatchStopRequestListener();
 
+		// Setup extract events for Sidebar buttons
+		this.setupExtractEventListeners();
+
 		// Add settings tab
 		this.addSettingTab(new MemoEchoSettingTab(this.app, this));
 	}
 
 	async onunload() {
 		console.log("Unloading Memo Echo Plugin");
+
+		// Cleanup extract event listeners
+		if (this.handleConceptsExtractCurrentBound) {
+			window.removeEventListener("memo-echo:concepts-extract-current", this.handleConceptsExtractCurrentBound);
+		}
+		if (this.handleBatchExtractAllBound) {
+			window.removeEventListener("memo-echo:batch-extract-all", this.handleBatchExtractAllBound);
+		}
 
 		// Cleanup
 		const detector = (this as any)._paragraphDetector as
@@ -785,6 +800,24 @@ export default class MemoEchoPlugin extends Plugin {
 				console.log("[MemoEcho] Stop batch requested, setting flag");
 			}
 		});
+	}
+
+	private setupExtractEventListeners(): void {
+		// Bind methods for proper cleanup
+		this.handleConceptsExtractCurrentBound = () => {
+			const activeFile = this.app.workspace.getActiveFile();
+			if (activeFile) {
+				this.processFileAndDispatch(activeFile);
+			}
+		};
+
+		this.handleBatchExtractAllBound = () => {
+			this.handleAllFilesAssociation();
+		};
+
+		// Add event listeners
+		window.addEventListener("memo-echo:concepts-extract-current", this.handleConceptsExtractCurrentBound);
+		window.addEventListener("memo-echo:batch-extract-all", this.handleBatchExtractAllBound);
 	}
 
 	/**

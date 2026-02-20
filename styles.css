@@ -1560,13 +1560,13 @@
 
 /* Icon button (for search box) */
 .memo-echo-icon-btn {
-    padding: 8px 12px;
+    padding: 6px 10px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
     background-color: var(--background-primary);
     color: var(--text-normal);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 14px;
     transition: all 0.2s;
 }
 
